@@ -33,8 +33,6 @@ import numpy as np
 from cupyx import jit
 from cupyx.scipy import ndimage as cp_ndimage
 import numpy as np
-from numba import njit
-import time
 from traitement_holo import *
 from enum import Enum
 
@@ -201,107 +199,107 @@ def CCL3D(d_bin_volume, d_focus_volume,  t_threshold, threshold, n_connectivity 
 
 
 
-@njit(nopython = True, fastmath=True)
-def CCA(h_labels_volume, h_focus_volume, features, i_image, dx, dy, dz):
+# @njit(nopython = True, fastmath=True)
+# def CCA(h_labels_volume, h_focus_volume, features, i_image, dx, dy, dz):
 
-    #reinit
-    for i in range(len(features)):
-        features[i]['baryX'] = 0.0
-        features[i]['baryY'] = 0.0
-        features[i]['baryZ'] = 0.0
-        features[i]['i_image'] = i_image
-        features[i]['nb_pix'] = 0
-        features[i]['xMin'] = 0.0
-        features[i]['xMax'] = 0.0
-        features[i]['yMin'] = 0.0
-        features[i]['yMax'] = 0.0
-        features[i]['zMin'] = 0.0
-        features[i]['zMax'] = 0.0
-        features[i]['pSum'] = 0.0
-        features[i]['pxSumX'] = 0.0
-        features[i]['pxSumY'] = 0.0
-        features[i]['pxSumZ'] = 0.0
+#     #reinit
+#     for i in range(len(features)):
+#         features[i]['baryX'] = 0.0
+#         features[i]['baryY'] = 0.0
+#         features[i]['baryZ'] = 0.0
+#         features[i]['i_image'] = i_image
+#         features[i]['nb_pix'] = 0
+#         features[i]['xMin'] = 0.0
+#         features[i]['xMax'] = 0.0
+#         features[i]['yMin'] = 0.0
+#         features[i]['yMax'] = 0.0
+#         features[i]['zMin'] = 0.0
+#         features[i]['zMax'] = 0.0
+#         features[i]['pSum'] = 0.0
+#         features[i]['pxSumX'] = 0.0
+#         features[i]['pxSumY'] = 0.0
+#         features[i]['pxSumZ'] = 0.0
 
-    sizeX, sizeY, sizeZ = h_labels_volume.shape
-    #creation de la liste d'objets analysés
-    #on parcours le volume labelisé
-    for z in range(sizeZ):
-        #print('z= ', z,'\n')
-        for y in range(sizeY):
-            for x in range(sizeX):
-                label = h_labels_volume[x,y,z]
-                if label!=0:
-                    #print('xyz= ',x,' ',y, ' ', z, 'label :', label)
-                    i = int(label-1)
-                    #nb_pix
-                    features[i]['nb_pix']+=1
-                    #xMin
-                    features[i]['xMin'] = min(features[i]['xMin'], x * dx)
-                    #xMax
-                    features[i]['xMax'] = max(features[i]['xMax'], x * dx)
-                    features[i]['yMin'] = min(features[i]['yMin'], y * dy)
-                    features[i]['yMax'] = max(features[i]['yMax'], y * dy)
-                    features[i]['zMin'] = min(features[i]['zMin'], z * dz)
-                    features[i]['zMax'] = max(features[i]['zMax'], z * dz)
-                    features[i]['pSum'] += h_focus_volume[x,y,z]
-                    features[i]['pxSumX'] += x * h_focus_volume[x,y,z]
-                    features[i]['pxSumY'] += y * h_focus_volume[x,y,z] 
-                    features[i]['pxSumZ'] += z * h_focus_volume[x,y,z] 
+#     sizeX, sizeY, sizeZ = h_labels_volume.shape
+#     #creation de la liste d'objets analysés
+#     #on parcours le volume labelisé
+#     for z in range(sizeZ):
+#         #print('z= ', z,'\n')
+#         for y in range(sizeY):
+#             for x in range(sizeX):
+#                 label = h_labels_volume[x,y,z]
+#                 if label!=0:
+#                     #print('xyz= ',x,' ',y, ' ', z, 'label :', label)
+#                     i = int(label-1)
+#                     #nb_pix
+#                     features[i]['nb_pix']+=1
+#                     #xMin
+#                     features[i]['xMin'] = min(features[i]['xMin'], x * dx)
+#                     #xMax
+#                     features[i]['xMax'] = max(features[i]['xMax'], x * dx)
+#                     features[i]['yMin'] = min(features[i]['yMin'], y * dy)
+#                     features[i]['yMax'] = max(features[i]['yMax'], y * dy)
+#                     features[i]['zMin'] = min(features[i]['zMin'], z * dz)
+#                     features[i]['zMax'] = max(features[i]['zMax'], z * dz)
+#                     features[i]['pSum'] += h_focus_volume[x,y,z]
+#                     features[i]['pxSumX'] += x * h_focus_volume[x,y,z]
+#                     features[i]['pxSumY'] += y * h_focus_volume[x,y,z] 
+#                     features[i]['pxSumZ'] += z * h_focus_volume[x,y,z] 
 
-    #calcul des barycentres
-    for i in range(len(features)):
-        features[i]['baryX'] = dx *features[i]['pxSumX'] / features[i]['pSum']
-        features[i]['baryY'] = dy * features[i]['pxSumY'] / features[i]['pSum']
-        features[i]['baryZ'] = dz * features[i]['pxSumZ'] / features[i]['pSum']
+#     #calcul des barycentres
+#     for i in range(len(features)):
+#         features[i]['baryX'] = dx *features[i]['pxSumX'] / features[i]['pSum']
+#         features[i]['baryY'] = dy * features[i]['pxSumY'] / features[i]['pSum']
+#         features[i]['baryZ'] = dz * features[i]['pxSumZ'] / features[i]['pSum']
 
-#version test du CCA avec une liste de features de type np.ndarray2D
-@njit(nopython = True)
-def CCA2(h_labels_volume, h_focus_volume, features):
+# #version test du CCA avec une liste de features de type np.ndarray2D
+# @njit(nopython = True)
+# def CCA2(h_labels_volume, h_focus_volume, features):
 
-    sizeX, sizeY, sizeZ = h_labels_volume.shape
-    #creation de la liste d'objets analysés
-    #on parcours le volume labelisé
-    for z in range(sizeZ):
-        #print('z= ', z,'\n')
-        for y in range(sizeY):
-            for x in range(sizeX):
-                label = h_labels_volume[x,y,z]
-                if label!=0:
-                    #print('xyz= ',x,' ',y, ' ', z, 'label :', label)
-                    i = int(label-1)
-                    #label
-                    features[i,0] = label
-                    #nb_pix
-                    features[i, 1]+=1
-                    #xMin
-                    features[i, 5] = min(features[i, 2], x)
-                    #xMax
-                    features[i, 5] = max(features[i, 3], x)
-                    #yMin
-                    features[i, 6] = min(features[i, 4], y)
-                    #yMax
-                    features[i, 7] = max(features[i, 5], y)
-                    #zMin
-                    features[i, 8] = min(features[i, 6], z)
-                    #zMax
-                    features[i, 9] = max(features[i, 7], z)
-                    #pxSumX
-                    features[i, 10] += h_focus_volume[x,y,z]
-                    #pxSumY
-                    features[i, 11] += x * h_focus_volume[x,y,z]
-                    #pxSumZ
-                    features[i, 12] += y * h_focus_volume[x,y,z]
-                    #pSum
-                    features[i, 13] += z * h_focus_volume[x,y,z] 
+#     sizeX, sizeY, sizeZ = h_labels_volume.shape
+#     #creation de la liste d'objets analysés
+#     #on parcours le volume labelisé
+#     for z in range(sizeZ):
+#         #print('z= ', z,'\n')
+#         for y in range(sizeY):
+#             for x in range(sizeX):
+#                 label = h_labels_volume[x,y,z]
+#                 if label!=0:
+#                     #print('xyz= ',x,' ',y, ' ', z, 'label :', label)
+#                     i = int(label-1)
+#                     #label
+#                     features[i,0] = label
+#                     #nb_pix
+#                     features[i, 1]+=1
+#                     #xMin
+#                     features[i, 5] = min(features[i, 2], x)
+#                     #xMax
+#                     features[i, 5] = max(features[i, 3], x)
+#                     #yMin
+#                     features[i, 6] = min(features[i, 4], y)
+#                     #yMax
+#                     features[i, 7] = max(features[i, 5], y)
+#                     #zMin
+#                     features[i, 8] = min(features[i, 6], z)
+#                     #zMax
+#                     features[i, 9] = max(features[i, 7], z)
+#                     #pxSumX
+#                     features[i, 10] += h_focus_volume[x,y,z]
+#                     #pxSumY
+#                     features[i, 11] += x * h_focus_volume[x,y,z]
+#                     #pxSumZ
+#                     features[i, 12] += y * h_focus_volume[x,y,z]
+#                     #pSum
+#                     features[i, 13] += z * h_focus_volume[x,y,z] 
 
-    #calcul des barycentres
-    for i in range(len(features)):
-        #baryX = psumX / psum
-        features[i, 2]= features[i, 10] / features[i, 13]
-        #baryY = psumY / psum
-        features[i, 3] = features[i, 11] / features[i, 13]
-        #baryZ = psumZ / psum
-        features[i, 4] = features[i, 12] / features[i, 13]
+#     #calcul des barycentres
+#     for i in range(len(features)):
+#         #baryX = psumX / psum
+#         features[i, 2]= features[i, 10] / features[i, 13]
+#         #baryY = psumY / psum
+#         features[i, 3] = features[i, 11] / features[i, 13]
+#         #baryZ = psumZ / psum
+#         features[i, 4] = features[i, 12] / features[i, 13]
 
 
 @jit.rawkernel()

@@ -576,10 +576,24 @@ class HoloTrackerCore:
         
         if not CUPY_AVAILABLE:
             # print("❌ Core: CuPy not available")
+            # Populate results with an explicit error so UI can display a meaningful message
+            self.results = {
+                'number_of_objects': 0,
+                'features': np.array([]),
+                'processing_times': {'total_processing': 0.0},
+                'error': 'CuPy not available for GPU processing'
+            }
             return "Error: CuPy not available for GPU processing"
             
         if not self.test_mode_allocated:
             # print("❌ Core: Test mode not initialized")
+            # Ensure results carry an explicit error to avoid empty dicts
+            self.results = {
+                'number_of_objects': 0,
+                'features': np.array([]),
+                'processing_times': {'total_processing': 0.0},
+                'error': 'Test mode not initialized (allocate must be called before processing)'
+            }
             return "Error: Test mode not initialized"
             
         # Print parameters for debugging
@@ -827,11 +841,16 @@ class HoloTrackerCore:
                 'count': 0
             }
             
-            # Debug: Check what self.results contains - let it fail if there's a problem
-            print(f"🔧 Core: self.results keys: {list(self.results.keys())}")
-            
-            # Add processing times - let it fail if there's a real problem
-            result_data['processing_times'] = self.results['processing_times']
+            # Debug: Check what self.results contains
+            try:
+                keys = list(self.results.keys()) if self.results and isinstance(self.results, dict) else []
+            except Exception:
+                keys = []
+            print(f"🔧 Core: self.results keys: {keys}")
+
+            # Add processing times only if available to avoid KeyError
+            if self.results and isinstance(self.results, dict) and 'processing_times' in self.results:
+                result_data['processing_times'] = self.results['processing_times']
             
             # Add detection results if available
             if self.results and 'features' in self.results and self.results['features'] is not None:
@@ -859,9 +878,9 @@ class HoloTrackerCore:
             
         except Exception as e:
             print(f"Error getting 3D results data: {e}")
-            # Return basic structure with timing if available
+            # Return basic structure with timing if available (guard self.results)
             basic_data = {'localizations': [], 'particle_sizes': [], 'count': 0}
-            if 'processing_times' in self.results:
+            if self.results and isinstance(self.results, dict) and 'processing_times' in self.results:
                 basic_data['processing_times'] = self.results['processing_times']
             return basic_data
 
