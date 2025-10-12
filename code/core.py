@@ -60,9 +60,13 @@ class HoloTrackerCore:
     def __init__(self):
         self.results = {}
         
-        # Variables for TEST_MODE
-        self.test_mode_allocated = False
+        # Memory allocation status
+        self.memory_allocated = False
         self.test_mode_params = {}  # To track parameters that require reallocation
+        
+        # Mode tracking
+        self.mode = 'IDLE'  # Possible values: 'IDLE', 'TEST', 'BATCH'
+        self.batch_first_hologram_done = False
         
         # Allocated GPU variables (as in test_HoloTracker_locate.py)
         self.h_raw_holo = None
@@ -138,16 +142,21 @@ class HoloTrackerCore:
         """Get all parameters as a dictionary"""
         param_attrs = [attr for attr in dir(self) if not attr.startswith('_') and 
                       not callable(getattr(self, attr)) and 
-                      attr not in ['results', 'test_mode_allocated', 'test_mode_params',
+                      attr not in ['results', 'memory_allocated', 'test_mode_params',
                                   'h_raw_holo', 'h_mean_holo', 'h_cleaned_holo', 'd_holo',
                                   'h_filtered_holo', 'd_filtered_holo', 'd_fft_holo', 
                                   'd_volume', 'd_focus', 'd_threshold', 'd_CCL', 'd_filtered_objects', 'd_slices']]
         return {attr: getattr(self, attr) for attr in param_attrs}
 
     def load_mean_hologram(self):
-        """Charge l'hologramme moyen depuis un fichier"""
-
-        self.h_mean_holo = np.load(self.mean_hologram_image_path)
+        """Load mean hologram from TIF or NPY file"""
+        if self.mean_hologram_image_path.lower().endswith('.npy'):
+            # Legacy NPY format
+            self.h_mean_holo = np.load(self.mean_hologram_image_path)
+        else:
+            # New TIF format
+            mean_pil = Image.open(self.mean_hologram_image_path)
+            self.h_mean_holo = np.array(mean_pil)
 
     def print_parameters(self):
         """Print all parameters, one parameter per line"""
@@ -155,7 +164,7 @@ class HoloTrackerCore:
         # Print all parameter attributes (skip internal variables)
         param_attrs = [attr for attr in dir(self) if not attr.startswith('_') and 
                       not callable(getattr(self, attr)) and 
-                      attr not in ['results', 'test_mode_allocated', 'test_mode_params',
+                      attr not in ['results', 'memory_allocated', 'test_mode_params',
                                   'h_raw_holo', 'h_mean_holo', 'h_cleaned_holo', 'd_holo',
                                   'h_filtered_holo', 'd_filtered_holo', 'd_fft_holo', 
                                   'd_fft_holo_filtered', 'd_fft_holo_propag', 'd_holo_propag',
@@ -210,7 +219,7 @@ class HoloTrackerCore:
 
             # CLEANED_HOLOGRAM
             if display_type == "CLEANED_HOLOGRAM":
-                if self.test_mode_allocated and self.h_cleaned_holo is not None:
+                if self.memory_allocated and self.h_cleaned_holo is not None:
                     arr = self.h_cleaned_holo.copy()
                     stat_plane(arr, label="CLEANED_HOLOGRAM")
                     image = Image.fromarray(_to_uint8(arr))
@@ -220,7 +229,7 @@ class HoloTrackerCore:
             # FILTERED_HOLOGRAM
             if display_type == "FILTERED_HOLOGRAM":
                 # Try CPU version first (more efficient)
-                if self.test_mode_allocated and self.h_filtered_holo is not None:
+                if self.memory_allocated and self.h_filtered_holo is not None:
                     try:
                         h_filtered = self.h_filtered_holo.copy()
                         if np.iscomplexobj(h_filtered):
@@ -231,7 +240,7 @@ class HoloTrackerCore:
                     except Exception:
                         pass
                 # Fallback to GPU version
-                if self.test_mode_allocated and self.d_filtered_holo is not None:
+                if self.memory_allocated and self.d_filtered_holo is not None:
                     try:
                         h_filtered = cp.asnumpy(self.d_filtered_holo)
                         if np.iscomplexobj(h_filtered):
@@ -245,7 +254,7 @@ class HoloTrackerCore:
 
             # FFT_HOLOGRAM
             if display_type == "FFT_HOLOGRAM":
-                if self.test_mode_allocated and self.d_fft_holo is not None:
+                if self.memory_allocated and self.d_fft_holo is not None:
                     try:
                         h_fft = cp.asnumpy(self.d_fft_holo)
                         if np.iscomplexobj(h_fft):
@@ -261,7 +270,7 @@ class HoloTrackerCore:
 
             # FFT_FILTERED_HOLOGRAM
             if display_type == "FFT_FILTERED_HOLOGRAM":
-                if self.test_mode_allocated and self.d_fft_holo_filtered is not None:
+                if self.memory_allocated and self.d_fft_holo_filtered is not None:
                     try:
                         h_fft_filtered = cp.asnumpy(self.d_fft_holo_filtered)
                         if np.iscomplexobj(h_fft_filtered):
@@ -276,7 +285,7 @@ class HoloTrackerCore:
 
             # VOLUME_PLANE_NUMBER and projections - keep original logic but use _fallback on error
             if display_type == "VOLUME_PLANE_NUMBER":
-                if self.test_mode_allocated:
+                if self.memory_allocated:
                     try:
                         volume_gpu = self.d_volume_module
                         if plane_number < volume_gpu.shape[0]:
@@ -290,7 +299,7 @@ class HoloTrackerCore:
                 return _fallback("VOLUME_PLANE_NUMBER")
 
             if display_type == "XY_SUM_PROJECTION":
-                if self.test_mode_allocated:
+                if self.memory_allocated:
                     try:
                         projection = cp.sum(self.d_volume_module, axis=0)
                         projection = cp.asnumpy(projection)
@@ -302,7 +311,7 @@ class HoloTrackerCore:
                 return _fallback("XY_SUM_PROJECTION")
 
             if display_type == "XZ_SUM_PROJECTION":
-                if self.test_mode_allocated:
+                if self.memory_allocated:
                     try:
                         projection = cp.sum(self.d_volume_module, axis=1)
                         projection = cp.asnumpy(projection)
@@ -314,7 +323,7 @@ class HoloTrackerCore:
                 return _fallback("XZ_SUM_PROJECTION")
 
             if display_type == "YZ_SUM_PROJECTION":
-                if self.test_mode_allocated:
+                if self.memory_allocated:
                     try:
                         print(f"Debug: Computing YZ_SUM_PROJECTION, volume shape: {self.d_volume_module.shape}")
                         print(f"Debug: Volume dtype: {self.d_volume_module.dtype}")
@@ -346,7 +355,7 @@ class HoloTrackerCore:
                 return _fallback("YZ_SUM_PROJECTION")
 
             if display_type == "XY_MAX_PROJECTION":
-                if self.test_mode_allocated:
+                if self.memory_allocated:
                     try:
                         projection = cp.max(self.d_volume_module, axis=0)
                         projection = cp.asnumpy(projection)
@@ -358,7 +367,7 @@ class HoloTrackerCore:
                 return _fallback("XY_MAX_PROJECTION")
 
             if display_type == "XZ_MAX_PROJECTION":
-                if self.test_mode_allocated:
+                if self.memory_allocated:
                     try:
                         projection = cp.max(self.d_volume_module, axis=1)
                         projection = cp.asnumpy(projection)
@@ -370,7 +379,7 @@ class HoloTrackerCore:
                 return _fallback("XZ_MAX_PROJECTION")
 
             if display_type == "YZ_MAX_PROJECTION":
-                if self.test_mode_allocated:
+                if self.memory_allocated:
                     try:
                         # print(f"Debug: Computing YZ_MAX_PROJECTION, volume shape: {self.d_volume_module.shape}")
                         # Try CUDA operation first, fallback to CPU if it fails
@@ -462,17 +471,19 @@ class HoloTrackerCore:
         mean_dir = os.path.join(directory, "mean")
         os.makedirs(mean_dir, exist_ok=True)
         
-        # Save as .npy for calculations (float64 precision, [0,255] range)
-        mean_npy_path = os.path.join(mean_dir, "mean_hologram.npy")
-        np.save(mean_npy_path, mean_image)
+        # Save as .tif for calculations (float32 precision, [0,255] range)
+        mean_tif_path = os.path.join(mean_dir, "mean_hologram.tif")
+        mean_image_float32 = mean_image.astype(np.float32)
+        mean_pil = Image.fromarray(mean_image_float32, mode='F')  # 'F' mode for 32-bit float
+        mean_pil.save(mean_tif_path)
         
         # Save as .bmp for visualization (uint8, [0,255] range)
         mean_bmp_path = os.path.join(mean_dir, "mean_hologram.bmp")
         mean_image_uint8 = np.clip(mean_image, 0, 255).astype(np.uint8)
-        mean_pil = Image.fromarray(mean_image_uint8, mode='L')
-        mean_pil.save(mean_bmp_path)
+        mean_pil_vis = Image.fromarray(mean_image_uint8, mode='L')
+        mean_pil_vis.save(mean_bmp_path)
         
-        return mean_npy_path  # Return the .npy path for use in calculations
+        return mean_tif_path  # Return the .tif path for use in calculations
 
     def batch_process(self):
         if not self.holograms_directory:
@@ -490,12 +501,26 @@ class HoloTrackerCore:
     
     def enter_test_mode(self):
         """Entre en mode test"""
+        self.mode = 'TEST'
         return "Test mode activated"
 
     def exit_test_mode(self):
         """Sort du mode test"""
+        self.mode = 'IDLE'
         self.cleanup_test_mode()
         return "Test mode deactivated"
+    
+    def enter_batch_mode(self):
+        """Entre en mode batch"""
+        self.mode = 'BATCH'
+        self.batch_first_hologram_done = False
+        return "Batch mode activated"
+    
+    def exit_batch_mode(self):
+        """Sort du mode batch"""
+        self.mode = 'IDLE'
+        self.batch_first_hologram_done = False
+        return "Batch mode deactivated"
     
     def allocate(self):
         """Allocation mémoire pour le traitement des hologrammes"""
@@ -528,14 +553,14 @@ class HoloTrackerCore:
         else:
             self.d_mean_holo = None
     
-        self.test_mode_allocated = True
+        self.memory_allocated = True
         
         # Print parameters for debugging
         self.print_parameters()
 
     def check_reallocation_needed(self, new_params):
         """Check if GPU memory reallocation is needed based on parameter changes"""
-        if not self.test_mode_allocated:
+        if not self.memory_allocated:
             return True
             
         # Parameters that require reallocation
@@ -553,7 +578,7 @@ class HoloTrackerCore:
         """Update parameters and reallocate GPU memory if needed"""
         if self.check_reallocation_needed(new_params):
             # Cleanup existing allocation
-            if self.test_mode_allocated:
+            if self.memory_allocated:
                 self.cleanup_test_mode()
             
             # Update parameters
@@ -585,7 +610,7 @@ class HoloTrackerCore:
             }
             return "Error: CuPy not available for GPU processing"
             
-        if not self.test_mode_allocated:
+        if not self.memory_allocated:
             # print("❌ Core: Test mode not initialized")
             # Ensure results carry an explicit error to avoid empty dicts
             self.results = {
@@ -732,21 +757,37 @@ class HoloTrackerCore:
             nb_StdVar_threshold = float(self.nb_StdVar_threshold)
             n_connectivity = int(self.connectivity)
             
-            # Calculate threshold if:
-            # - First time (no threshold calculated yet)
-            # - recalc_threshold is True (compute on each hologram)
-            # - nb_StdVar_threshold value has changed
-            batch_recalc = self.batch_threshold == "compute on each hologram"
-            need_recalc = (not self.threshold or 
+            # NEW LOGIC: Threshold recalculation based on mode
+            # Base conditions (always needed)
+            base_need = (not self.threshold or 
                         not self.last_nb_StdVar_threshold or
-                        batch_recalc or
                         self.last_nb_StdVar_threshold != nb_StdVar_threshold)
+            
+            # Mode-specific logic
+            if self.mode == 'TEST':
+                # TEST mode: always recalculate threshold
+                need_recalc = True
+            elif self.mode == 'BATCH':
+                # BATCH mode: depends on batch_threshold setting
+                batch_recalc = self.batch_threshold == "compute on each hologram"
+                if self.batch_threshold == "compute on 1st hologram":
+                    # Only on first hologram in batch
+                    need_recalc = base_need or not self.batch_first_hologram_done
+                else:
+                    # On each hologram (batch_recalc = True)
+                    need_recalc = base_need or batch_recalc
+            else:
+                # IDLE or other modes: use base logic
+                need_recalc = base_need
             
             if need_recalc:
                 print(f"🎯 DEBUG: Recalculating threshold...")
-                print(f"🎯 DEBUG: Reason - threshold: {self.threshold}, last_nb_StdVar: {self.last_nb_StdVar_threshold}, batch_recalc: {batch_recalc}")
+                print(f"🎯 DEBUG: Reason - mode: {self.mode}, threshold: {self.threshold}, last_nb_StdVar: {self.last_nb_StdVar_threshold}")
                 self.threshold = calc_threshold(self.d_volume_module, nb_StdVar_threshold)
                 self.last_nb_StdVar_threshold = nb_StdVar_threshold
+                # If we computed for the first hologram in batch, mark it done
+                if self.mode == 'BATCH' and self.batch_threshold == "compute on 1st hologram":
+                    self.batch_first_hologram_done = True
             else:
                 print(f"🎯 DEBUG: Using cached threshold: {self.threshold}")
                 
@@ -1295,7 +1336,7 @@ class HoloTrackerCore:
                 del var
             setattr(self, var_name, None)
         
-        self.test_mode_allocated = False
+        self.memory_allocated = False
         
     def _initialize_propagation_kernels(self):
         """Initialize propagation kernels using existing functions from test_HoloTracker_locate.py"""
@@ -1316,7 +1357,7 @@ class HoloTrackerCore:
 
     def extract_object_slices(self, pos_x_um, pos_y_um, pos_z_um, vox_xy, vox_z):
         """Extract 3 slice views (XY, XZ, YZ) around an object from the reconstructed volume"""
-        if not self.test_mode_allocated or self.d_volume_module is None:
+        if not self.memory_allocated or self.d_volume_module is None:
             raise ValueError("Test mode not initialized or no volume available")
             
         # print(f"🔍 Core: Extracting slices at ({pos_x_um:.3f}, {pos_y_um:.3f}, {pos_z_um:.3f}) µm")

@@ -283,6 +283,8 @@ class CoreCommunicator:
         """ENTER_TEST_MODE: Changement d'état seulement (plus d'allocation)"""
         try:
             self.current_state = "TEST_MODE"
+            # Call core method to set mode
+            self.core.enter_test_mode()
             
             return self._create_result(CommandType.ENTER_TEST_MODE, {
                 'message': 'Test mode activated'
@@ -420,8 +422,8 @@ class CoreCommunicator:
         """Gère la sortie du mode test"""
         try:
             self.current_state = "IDLE"
-            # Optionnel: libérer la mémoire GPU
-            # self.core.cleanup_gpu_memory()
+            # Call core method to exit test mode
+            self.core.exit_test_mode()
             
             return Result(
                 command_type=CommandType.EXIT_TEST_MODE,
@@ -438,6 +440,8 @@ class CoreCommunicator:
             directory = command.data.get('directory', '')
             
             self.current_state = "BATCH_MODE"
+            # Call core method to enter batch mode
+            self.core.enter_batch_mode()
             
             # Initialisation du fichier CSV SANS timestamp
             if directory:
@@ -466,15 +470,14 @@ class CoreCommunicator:
         """EXIT_BATCH_MODE: Nettoyage et fermeture"""
         try:
             self.current_state = "IDLE"
+            # Call core method to exit batch mode
+            self.core.exit_batch_mode()
             
             # Nettoyage des variables batch
             if hasattr(self, 'batch_csv_path'):
                 delattr(self, 'batch_csv_path')
             if hasattr(self, 'batch_hologram_counter'):
                 delattr(self, 'batch_hologram_counter')
-            
-            # Optionnel: libérer la mémoire GPU
-            # self.core.cleanup_test_mode()
             
             return Result(
                 command_type=CommandType.EXIT_BATCH_MODE,

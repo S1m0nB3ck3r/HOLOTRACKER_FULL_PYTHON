@@ -163,6 +163,7 @@ class HoloTrackerApp:
 
         # Mean hologram image path
         ttk.Label(self.tab_path, text="Mean hologram image path:").grid(row=2, column=0, sticky="w", pady=5)
+        ttk.Label(self.tab_path, text="32bits TIF image", font=("TkDefaultFont", 8), foreground="gray").grid(row=2, column=0, sticky="w", padx=(20, 0), pady=(35, 0))
         mean_frame = ttk.Frame(self.tab_path)
         mean_frame.grid(row=2, column=1, sticky="ew", pady=5)
         self.mean_image_text = tk.Text(mean_frame, height=1, width=50, wrap=tk.NONE)
@@ -182,7 +183,7 @@ class HoloTrackerApp:
                 "Computes the mean hologram from all holograms in \"Holograms Directory\".\n"
                 "The mean hologram is used to clean individual holograms\n"
                 "by subtracting background noise and common artifacts.\n"
-                "The result is saved in a 'mean' subfolder in .npy format")
+                "The result is saved in a 'mean' subfolder in .tif format")
 
 
     def browse_directory(self):
@@ -194,10 +195,10 @@ class HoloTrackerApp:
             self.on_parameter_changed("holograms_directory", directory)
 
     def browse_mean_image(self):
-        # Allow only .npy files (pre-calculated mean holograms)
-        filetypes = [("NumPy files", "*.npy"), ("All files", "*.*")]
+        # Allow TIF files (mean holograms) and NPY for backward compatibility
+        filetypes = [("TIFF files", "*.tif"), ("TIFF files", "*.tiff"), ("NumPy files", "*.npy"), ("All files", "*.*")]
         filename = filedialog.askopenfilename(
-            title="Select Mean Hologram File (.npy format only)",
+            title="Select Mean Hologram File (.tif format recommended)",
             filetypes=filetypes
         )
         if filename:
