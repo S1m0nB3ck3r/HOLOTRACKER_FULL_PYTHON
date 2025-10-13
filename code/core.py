@@ -1571,3 +1571,70 @@ class HoloTrackerCore:
             
         except Exception as e:
             return f"Error: {e}"
+
+    def analyze_focus_at_position(self, x_pos, y_pos, focus_type_str, sum_size):
+        """Analyzes focus function at a given position through all Z layers
+        
+        Args:
+            x_pos: X position of the pixel to analyze
+            y_pos: Y position of the pixel to analyze
+            focus_type_str: Focus type ("TENEGRAD", "SUM_OF_INTENSITY", etc.)
+            sum_size: Size of the summation window
+            
+        Returns:
+            List of focus values for each Z plane or None in case of error
+        """
+        try:
+            # Check that we have a propagated volume
+            if self.d_volume_module is None:
+                print("❌ No propagated volume available for focus analysis")
+                return None
+                
+            # Check coordinates
+            if (x_pos < 0 or x_pos >= self.d_volume_module.shape[2] or
+                y_pos < 0 or y_pos >= self.d_volume_module.shape[1]):
+                print(f"❌ Position ({x_pos}, {y_pos}) out of volume bounds")
+                return None
+                
+            # Focus type mapping
+            focus_type_map = {
+                "SUM_OF_INTENSITY": Focus_type.SUM_OF_INTENSITY,
+                "SUM_OF_LAPLACIAN": Focus_type.SUM_OF_LAPLACIAN,
+                "SUM_OF_VARIANCE": Focus_type.SUM_OF_VARIANCE,
+                "TENEGRAD": Focus_type.TENEGRAD
+            }
+            
+            if focus_type_str not in focus_type_map:
+                print(f"❌ Unknown focus type: {focus_type_str}")
+                return None
+                
+            focus_type_enum = focus_type_map[focus_type_str]
+            
+            print(f"🔍 Focus analysis {focus_type_str} at position ({x_pos}, {y_pos}) with sum_size={sum_size}")
+            
+            # Create temporary volume for focus computation
+            focus_volume = cp.copy(self.d_volume_module)
+            
+            # Apply focus function on entire volume
+            focus.focus(focus_volume, focus_volume, sum_size, focus_type_enum)
+            
+            # Extract focus values for given position
+            focus_values = []
+            for z in range(focus_volume.shape[0]):
+                # Extract value at specified pixel
+                pixel_value = float(focus_volume[z, y_pos, x_pos])
+                focus_values.append(pixel_value)
+                
+            print(f"✅ Analysis completed: {len(focus_values)} values extracted")
+            
+            # Clean up GPU memory
+            del focus_volume
+            cp.get_default_memory_pool().free_all_blocks()
+            
+            return focus_values
+            
+        except Exception as e:
+            print(f"❌ Error during focus analysis: {e}")
+            import traceback
+            traceback.print_exc()
+            return None

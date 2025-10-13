@@ -16,11 +16,11 @@
     "remove_mean": true,
     "cleaning_type": "division",
     "batch_threshold": "compute on 1st hologram",
-    "nb_StdVar_threshold": "8",
+    "nb_StdVar_threshold": "9",
     "connectivity": "26",
     "min_voxel": "1000",
     "max_voxel": "0",
     "holograms_directory": "C:/TRAVAIL/RepositoriesGithub/HOLOTRACKER_FULL_PYTHON/Film REF",
     "image_type": "BMP",
-    "additional_display": "Segmentation"
+    "additional_display": "Centroid positions"
 }

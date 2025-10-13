@@ -951,6 +951,111 @@ class HoloTrackerController:
         
         self.update_status(f"Mean hologram path updated: {os.path.basename(mean_path)}")
 
+    def run_focus_analysis(self, x_pos, y_pos, configs):
+        """Launches focus function analysis for a given position
+        
+        Args:
+            x_pos: X position of the pixel to analyze
+            y_pos: Y position of the pixel to analyze  
+            configs: List of focus configurations to analyze
+                    Each config contains: {'focus_type': str, 'sum_size': int}
+        
+        Returns:
+            List of normalized results for each configuration or None in case of error
+        """
+        try:
+            # Store click position for dialog
+            self.last_click_position = (x_pos, y_pos)
+            
+            # Check that we are in TEST mode
+            if self.state != "TEST_MODE":
+                print(f"❌ Focus analysis only available in TEST mode (current state: {self.state})")
+                return None
+                
+            # Get current parameters
+            current_params = self.core.get_parameters_dict()
+            if not current_params:
+                print("❌ Unable to get current parameters")
+                return None
+                
+            # Restart pipeline in TEST mode up to focus step
+            self.restart_test_mode_pipeline()
+            
+            # Wait for processing to complete
+            import time
+            timeout = 30  # 30 seconds maximum
+            start_time = time.time()
+            
+            while self.state == "PROCESSING" and (time.time() - start_time) < timeout:
+                time.sleep(0.1)
+                
+            if self.state != "TEST_MODE":
+                print(f"❌ Pipeline restart failed (final state: {self.state})")
+                return None
+                
+            # Launch analysis for each configuration
+            results = []
+            for config in configs:
+                focus_type = config['focus_type']
+                sum_size = config['sum_size']
+                
+                print(f"🔍 Analyzing {focus_type} with sum_size={sum_size} at position ({x_pos}, {y_pos})")
+                
+                # Call core focus analysis method
+                focus_values = self.core.analyze_focus_at_position(
+                    x_pos, y_pos, focus_type, sum_size
+                )
+                
+                if focus_values is not None:
+                    # Normalize values between 0 and 1
+                    focus_array = np.array(focus_values)
+                    if len(focus_array) > 0:
+                        min_val = np.min(focus_array)
+                        max_val = np.max(focus_array)
+                        if max_val > min_val:
+                            normalized = (focus_array - min_val) / (max_val - min_val)
+                        else:
+                            normalized = np.ones_like(focus_array) * 0.5
+                        results.append(normalized.tolist())
+                    else:
+                        results.append([])
+                else:
+                    print(f"❌ Analysis failed for {focus_type}")
+                    results.append([])
+                    
+            print(f"✅ Focus analysis completed: {len(results)} configurations analyzed")
+            return results
+            
+        except Exception as e:
+            print(f"❌ Error during focus analysis: {e}")
+            return None
+
+    def restart_test_mode_pipeline(self):
+        """Restarts the pipeline in TEST mode up to the focus step"""
+        try:
+            if self.state != "TEST_MODE":
+                print("❌ Pipeline restart only available in TEST mode")
+                return False
+                
+            print("🔄 Restarting pipeline in TEST mode...")
+            
+            # Temporarily change state
+            self.set_state("PROCESSING")
+            self.update_status("Pipeline restarting...")
+            
+            # Relaunch complete processing
+            self.core_comm.send_command(
+                CommandType.RUN_TEST,
+                self.core.get_parameters_dict()
+            )
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error during pipeline restart: {e}")
+            self.set_state("TEST_MODE")
+            return False
+
     def cleanup(self):
         """Cleanup resources"""
         if self.core_comm:

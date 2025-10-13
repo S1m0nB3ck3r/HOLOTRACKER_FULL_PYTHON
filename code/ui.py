@@ -714,6 +714,7 @@ class HoloTrackerApp:
 
         self.image_canvas.bind("<Configure>", self._on_canvas_resize)
         self.image_canvas.bind("<Button-1>", self._on_image_click)
+        self.image_canvas.bind("<Button-3>", self._on_image_right_click)  # Right click for focus analysis
 
     def display_hologram_image(self, pil_image):
         self.pil_image = pil_image
@@ -818,6 +819,51 @@ class HoloTrackerApp:
                     
         except Exception as e:
             print(f"Error handling image click: {e}")
+
+    def _on_image_right_click(self, event):
+        """Handle right click on image for focus analysis (TEST_MODE only, XY images only)"""
+        if not self.pil_image or not self.controller:
+            return
+            
+        # Check if we're in TEST_MODE
+        if not hasattr(self.controller, 'core') or not hasattr(self.controller.core, 'mode'):
+            return
+            
+        if self.controller.core.mode != 'TEST':
+            messagebox.showwarning("Focus Analysis", "Focus analysis is only available in TEST mode.")
+            return
+            
+        # Check if we're displaying an XY image (not XZ or YZ projection)
+        display_type = self.display_combobox.get()
+        if not display_type or "XZ" in display_type or "YZ" in display_type:
+            messagebox.showinfo("Focus Analysis", "Focus analysis is only available on XY images (not XZ or YZ projections).")
+            return
+            
+        try:
+            # Get click coordinates on canvas
+            canvas_x = self.image_canvas.canvasx(event.x)
+            canvas_y = self.image_canvas.canvasy(event.y)
+            
+            # Convert canvas coordinates to original image coordinates
+            img_w, img_h = self.pil_image.size
+            if self.zoom_mode == "stretch":
+                canvas_w = self.image_canvas.winfo_width()
+                canvas_h = self.image_canvas.winfo_height()
+                scale = min(canvas_w / img_w, canvas_h / img_h)
+            else:  # "real" mode
+                scale = self.zoom_level
+                
+            # Calculate original image coordinates
+            orig_x = int(canvas_x / scale)
+            orig_y = int(canvas_y / scale)
+            
+            # Check bounds
+            if 0 <= orig_x < img_w and 0 <= orig_y < img_h:
+                # Open focus analysis dialog
+                self._open_focus_analysis_dialog(orig_x, orig_y)
+                    
+        except Exception as e:
+            print(f"Error handling image right click: {e}")
 
     def init_localisations_tab(self):
         self.fig = Figure(figsize=(6,6), dpi=100)
@@ -1569,18 +1615,199 @@ class HoloTrackerApp:
                 error_label.pack(pady=10)
             except:
                 print(f"⚠️  UI: Could not display error in dialog (dialog may be closed)")
-    
-    def update_plane_number_range(self):
-        """Update the plane number spinbox range based on number_of_planes parameter"""
-        try:
-            number_of_planes = int(self.number_of_planes_entry.get()) if self.number_of_planes_entry.get() else 200
-            max_plane = max(0, number_of_planes - 1)  # Ensure at least 0
-            self.plane_number_spinbox.config(to=max_plane)
+
+    def _open_focus_analysis_dialog(self, x_pos, y_pos):
+        """Opens a dialog to configure and launch focus function analysis
+        
+        Args:
+            x_pos: X position of the click on the image
+            y_pos: Y position of the click on the image
+        """
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f"Focus Analysis - Position ({x_pos}, {y_pos})")
+        # Start with larger width to accommodate all controls
+        dialog.geometry("800x750")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Main configuration
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Buttons at the top
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.grid(row=0, column=0, columnspan=2, pady=(0, 10))
+        
+        # Number of comparisons
+        ttk.Label(main_frame, text="Number of comparisons:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        num_comparisons_var = tk.IntVar(value=2)
+        num_comparisons_spinbox = ttk.Spinbox(main_frame, from_=1, to=4, textvariable=num_comparisons_var, width=5)
+        num_comparisons_spinbox.grid(row=1, column=1, sticky=tk.W, padx=(10, 0))
+        
+        # Frame for comparison configurations
+        comparisons_frame = ttk.LabelFrame(main_frame, text="Comparison Configuration")
+        comparisons_frame.grid(row=2, column=0, columnspan=2, sticky=tk.EW, pady=10)
+        comparisons_frame.columnconfigure(0, weight=1)
+        
+        comparison_configs = []
+        
+        def update_comparisons():
+            """Updates the display of comparison configurations"""
+            # Clear old widgets
+            for widget in comparisons_frame.winfo_children():
+                widget.destroy()
+            comparison_configs.clear()
             
-            # Adjust current value if it's out of range
-            current_value = int(self.plane_number_spinbox.get()) if self.plane_number_spinbox.get() else 0
-            if current_value > max_plane:
-                self.plane_number_spinbox.set(max_plane)
-        except ValueError:
-            # If number_of_planes is not a valid integer, use default
-            self.plane_number_spinbox.config(to=199)  # Default to 200 planes (0-199)
+            # Create new widgets
+            for i in range(num_comparisons_var.get()):
+                comp_frame = ttk.Frame(comparisons_frame)
+                comp_frame.grid(row=i, column=0, sticky=tk.EW, pady=5, padx=5)
+                # Configure all columns for better spacing
+                comp_frame.columnconfigure(0, weight=0, minsize=100)  # Comparison label
+                comp_frame.columnconfigure(1, weight=0, minsize=50)   # Type label  
+                comp_frame.columnconfigure(2, weight=1, minsize=150)  # Type combobox
+                comp_frame.columnconfigure(3, weight=0, minsize=70)   # Sum size label
+                comp_frame.columnconfigure(4, weight=0, minsize=60)   # Sum size spinbox
+                
+                ttk.Label(comp_frame, text=f"Comparison {i+1}:").grid(row=0, column=0, sticky=tk.W)
+                
+                # Focus type
+                ttk.Label(comp_frame, text="Type:").grid(row=0, column=1, sticky=tk.W, padx=(10, 5))
+                focus_type_var = tk.StringVar(value="TENEGRAD")
+                focus_type_combo = ttk.Combobox(comp_frame, textvariable=focus_type_var, 
+                                              values=["SUM_OF_INTENSITY", "SUM_OF_LAPLACIAN", "SUM_OF_VARIANCE", "TENEGRAD"],
+                                              state="readonly", width=15)
+                focus_type_combo.grid(row=0, column=2, padx=5)
+                
+                # Sum size
+                ttk.Label(comp_frame, text="Sum size:").grid(row=0, column=3, sticky=tk.W, padx=(10, 5))
+                sum_size_var = tk.IntVar(value=15)
+                sum_size_spinbox = ttk.Spinbox(comp_frame, from_=1, to=101, textvariable=sum_size_var, width=5)
+                sum_size_spinbox.grid(row=0, column=4, padx=5)
+                
+                comparison_configs.append({
+                    'focus_type': focus_type_var,
+                    'sum_size': sum_size_var
+                })
+        
+        def auto_resize_dialog():
+            """Automatically resize dialog to fit content"""
+            dialog.update_idletasks()
+            
+            # Calculate required size based on current content
+            req_width = dialog.winfo_reqwidth()
+            req_height = dialog.winfo_reqheight()
+            
+            # Ensure minimum size but allow expansion if needed
+            min_width = 800
+            min_height = 750
+            
+            final_width = max(min_width, req_width + 50)  # Add padding
+            final_height = max(min_height, req_height + 50)
+            
+            # Limit to screen size
+            screen_width = dialog.winfo_screenwidth()
+            screen_height = dialog.winfo_screenheight()
+            
+            final_width = min(final_width, int(screen_width * 0.9))
+            final_height = min(final_height, int(screen_height * 0.9))
+            
+            # Get current position to maintain it
+            current_x = dialog.winfo_x()
+            current_y = dialog.winfo_y()
+            
+            # Only recenter if dialog would go off screen
+            if (current_x + final_width > screen_width) or (current_y + final_height > screen_height):
+                # Recenter if needed
+                x = (screen_width - final_width) // 2
+                y = (screen_height - final_height) // 2
+                dialog.geometry(f"{final_width}x{final_height}+{x}+{y}")
+            else:
+                # Keep current position, just resize
+                dialog.geometry(f"{final_width}x{final_height}+{current_x}+{current_y}")
+            
+        def update_comparisons_with_resize():
+            """Updates comparisons and resizes dialog"""
+            update_comparisons()
+            # Schedule resize after widget updates
+            dialog.after(10, auto_resize_dialog)
+        
+        # Initialize comparisons
+        update_comparisons()
+        
+        # Bind update to number of comparisons change with auto-resize
+        num_comparisons_spinbox.config(command=update_comparisons_with_resize)
+        
+        # Results area with matplotlib
+        results_frame = ttk.LabelFrame(main_frame, text="Results")
+        results_frame.grid(row=3, column=0, columnspan=2, sticky=tk.EW, pady=10)
+        results_frame.columnconfigure(0, weight=1)
+        
+        # Matplotlib figure
+        fig = Figure(figsize=(7, 5), dpi=80)
+        canvas = FigureCanvasTkAgg(fig, results_frame)
+        canvas.get_tk_widget().grid(row=0, column=0, sticky=tk.EW, padx=5, pady=5)
+        
+        # Progress bar
+        progress_frame = ttk.Frame(main_frame)
+        progress_frame.grid(row=4, column=0, columnspan=2, sticky=tk.EW, pady=10)
+        progress_frame.columnconfigure(0, weight=1)
+        
+        progress_bar = ttk.Progressbar(progress_frame, mode='determinate')
+        progress_bar.grid(row=0, column=0, sticky=tk.EW, padx=(0, 10))
+        
+        status_label = ttk.Label(progress_frame, text="Ready")
+        status_label.grid(row=1, column=0, sticky=tk.W)
+        
+        def run_analysis():
+            """Launches the focus function analysis"""
+            try:
+                # Prepare configurations
+                configs = []
+                for config in comparison_configs:
+                    configs.append({
+                        'focus_type': config['focus_type'].get(),
+                        'sum_size': config['sum_size'].get()
+                    })
+                
+                # Update interface
+                status_label.config(text="Analysis in progress...")
+                progress_bar.config(value=0)
+                dialog.update()
+                
+                # Use coordinates passed as parameter
+                # Launch analysis via controller
+                results = self.controller.run_focus_analysis(x_pos, y_pos, configs)
+                
+                if results:
+                    # Plot results
+                    ax = fig.add_subplot(111)
+                    ax.clear()
+                    
+                    for i, (config, values) in enumerate(zip(configs, results)):
+                        z_positions = range(len(values))
+                        label = f"{config['focus_type']} (size={config['sum_size']})"
+                        ax.plot(z_positions, values, label=label, marker='o', markersize=2)
+                    
+                    ax.set_xlabel('Z Position')
+                    ax.set_ylabel('Normalized Focus Value')
+                    ax.set_title(f'Focus Analysis at Position ({x_pos}, {y_pos})')
+                    ax.legend()
+                    ax.grid(True, alpha=0.3)
+                    
+                    canvas.draw()
+                    status_label.config(text="Analysis completed")
+                    progress_bar.config(value=100)
+                else:
+                    status_label.config(text="Error during analysis")
+                    
+            except Exception as e:
+                status_label.config(text=f"Error: {str(e)}")
+                print(f"Error during focus analysis: {e}")
+        
+        ttk.Button(buttons_frame, text="Run Analysis", command=run_analysis).pack(side=tk.LEFT, padx=5)
+        ttk.Button(buttons_frame, text="Close", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+        
+        # Initial auto-size and center the dialog
+        auto_resize_dialog()
+
