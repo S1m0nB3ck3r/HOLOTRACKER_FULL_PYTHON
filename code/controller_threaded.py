@@ -316,11 +316,29 @@ class HoloTrackerController:
     def on_parameter_changed(self, name, value):
         try:
             if self.state == "TEST_MODE":
-                # Envoyer commande de changement de paramètre au Core
-                self.core_comm.send_command(
-                    CommandType.CHANGE_PARAMETER,
-                    {'name': name, 'value': value}
-                )
+                # Parameters that require pipeline restart
+                pipeline_restart_params = [
+                    'mean_hologram_image_path', 'holo_size_x', 'holo_size_y', 'number_of_planes',
+                    'distance', 'step', 'high_pass', 'low_pass', 'focus_type', 'sum_size',
+                    'nb_StdVar_threshold', 'connectivity', 'cleaning_type', 'remove_mean'
+                ]
+                
+                # Send parameter change command to Core
+                command_data = {'name': name, 'value': value}
+                
+                # If we have current hologram info and parameter requires pipeline restart
+                if (name in pipeline_restart_params and 
+                    self.current_display_info['directory'] and 
+                    self.current_display_info['filename']):
+                    
+                    # Add current hologram info to trigger pipeline processing
+                    command_data['directory'] = self.current_display_info['directory']
+                    command_data['filename'] = self.current_display_info['filename']
+                    
+                    print(f"🔄 Parameter {name} changed, restarting pipeline for {self.current_display_info['filename']}")
+                
+                self.core_comm.send_command(CommandType.CHANGE_PARAMETER, command_data)
+                
             else:
                 # En mode WAIT, mise à jour directe
                 result = self.core.set_parameter(name, value)
@@ -901,21 +919,21 @@ class HoloTrackerController:
         
         self.core_comm.send_command(CommandType.EXTRACT_OBJECT_SLICES, command_data)
 
-    def start_mean_hologram_computation(self, directory, image_type):
+    def start_mean_hologram_computation(self, directory, image_type, mean_type="arithmetic"):
         """Start mean hologram computation in a separate thread"""
-        print(f"🧮 Controller: Starting mean hologram computation in {directory} with type {image_type}")
+        print(f"🧮 Controller: Starting {mean_type} mean hologram computation in {directory} with type {image_type}")
         
         def compute_in_thread():
             try:
-                self.update_status("Computing mean hologram...")
+                self.update_status(f"Computing {mean_type} mean hologram...")
                 
                 # Define progress callback to update UI
                 def progress_callback(current, total):
                     progress = int((current / total) * 100)
                     self.ui.root.after(0, lambda: self.update_status(f"Processing image {current}/{total} ({progress}%)"))
                 
-                # Call the core method
-                mean_path = self.core.compute_mean_hologram(directory, image_type, progress_callback)
+                # Call the core method with mean_type
+                mean_path = self.core.compute_mean_hologram(directory, image_type, progress_callback, mean_type)
                 
                 # Update UI and parameters with the new mean hologram path
                 self.ui.root.after(0, lambda: self._update_mean_hologram_path(mean_path))

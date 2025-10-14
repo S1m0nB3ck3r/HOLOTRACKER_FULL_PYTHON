@@ -112,6 +112,7 @@ class HoloTrackerApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.controller = controller
         self.parameters = {}
+        self.last_mean_path = ""  # Initialize for change detection
         self.status_var = tk.StringVar()
         self.paned_window = ttk.PanedWindow(root, orient=tk.HORIZONTAL)
         self.paned_window.pack(fill="both", expand=True)
@@ -171,6 +172,11 @@ class HoloTrackerApp:
         mean_scroll = ttk.Scrollbar(mean_frame, orient="horizontal", command=self.mean_image_text.xview)
         mean_scroll.grid(row=1, column=0, sticky="ew")
         self.mean_image_text.configure(xscrollcommand=mean_scroll.set)
+        
+        # Add bindings to detect changes in mean hologram path
+        self.mean_image_text.bind("<FocusOut>", lambda e: self.on_mean_path_changed())
+        self.mean_image_text.bind("<KeyRelease>", lambda e: self.on_mean_path_changed())
+        
         self.browse_mean_button = ttk.Button(self.tab_path, text="Browse", command=self.browse_mean_image)
         self.browse_mean_button.grid(row=2, column=2, padx=5, pady=5)
 
@@ -204,9 +210,11 @@ class HoloTrackerApp:
         if filename:
             self.mean_image_text.delete("1.0", tk.END)
             self.mean_image_text.insert(tk.END, filename)
+            # Trigger parameter change detection
+            self.on_mean_path_changed()
 
     def compute_mean_hologram(self):
-        # Show popup dialog
+        # Show popup dialog for directory choice
         result = messagebox.askyesno(
             "Mean Hologram Computation",
             "Do you want to compute mean hologram on all available holograms in directory?",
@@ -218,8 +226,95 @@ class HoloTrackerApp:
         else:
             directory = filedialog.askdirectory(title="Select Directory for Mean Hologram Computation")
         
-        if directory and self.controller:
-            self.controller.start_mean_hologram_computation(directory, self.image_type_var.get())
+        if directory:
+            # Create dialog to choose mean type
+            self._show_mean_type_dialog(directory)
+    
+    def _show_mean_type_dialog(self, directory):
+        """Show dialog to choose between arithmetic and logarithmic mean"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Mean Hologram Type")
+        dialog.geometry("450x250")  # Increased size for better visibility
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Main frame
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Choose Mean Computation Type", 
+                               font=("Arial", 12, "bold"))
+        title_label.pack(pady=(0, 15))
+        
+        # Description
+        desc_label = ttk.Label(main_frame, 
+                              text="Select the type of mean to compute:",
+                              font=("Arial", 10))
+        desc_label.pack(pady=(0, 10))
+        
+        # Radio buttons for mean type
+        mean_type_var = tk.StringVar(value="arithmetic")
+        
+        arith_frame = ttk.Frame(main_frame)
+        arith_frame.pack(fill=tk.X, pady=2)
+        ttk.Radiobutton(arith_frame, text="Arithmetic Mean", 
+                       variable=mean_type_var, value="arithmetic").pack(side=tk.LEFT)
+        ttk.Label(arith_frame, text="(Traditional average: Σ(I)/N)", 
+                 font=("Arial", 9), foreground="gray").pack(side=tk.LEFT, padx=(10, 0))
+        
+        log_frame = ttk.Frame(main_frame)
+        log_frame.pack(fill=tk.X, pady=2)
+        ttk.Radiobutton(log_frame, text="Logarithmic Mean", 
+                       variable=mean_type_var, value="logarithmic").pack(side=tk.LEFT)
+        ttk.Label(log_frame, text="(exp(Σ(ln(I))/N) for multiplicative noise)", 
+                 font=("Arial", 9), foreground="gray").pack(side=tk.LEFT, padx=(10, 0))
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(20, 0))
+        
+        def start_computation():
+            mean_type = mean_type_var.get()
+            dialog.destroy()
+            if self.controller:
+                self.controller.start_mean_hologram_computation(directory, self.image_type_var.get(), mean_type)
+        
+        def cancel():
+            dialog.destroy()
+        
+        ttk.Button(button_frame, text="Compute", command=start_computation).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel).pack(side=tk.LEFT)
+        
+        # Auto-resize dialog to fit content
+        def auto_resize_mean_dialog():
+            try:
+                dialog.update_idletasks()
+                
+                # Calculate required size based on content
+                req_width = main_frame.winfo_reqwidth() + 40  # Add padding
+                req_height = main_frame.winfo_reqheight() + 40  # Add padding
+                
+                # Set minimum size to ensure buttons are visible
+                min_width = 450
+                min_height = 250
+                
+                final_width = max(req_width, min_width)
+                final_height = max(req_height, min_height)
+                
+                dialog.geometry(f"{final_width}x{final_height}")
+                
+            except tk.TclError:
+                pass  # Dialog may have been destroyed
+        
+        # Center dialog and apply auto-resize
+        dialog.update_idletasks()
+        auto_resize_mean_dialog()
+        dialog.update_idletasks()
+        
+        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
+        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
 
     def init_parameters_tab(self):
         holo_frame = ttk.LabelFrame(self.tab_parameters, text="Holo parameters")
@@ -378,6 +473,22 @@ class HoloTrackerApp:
             if current_value != self.remove_mean_check.last_value:
                 self.remove_mean_check.last_value = current_value
                 self.controller.on_parameter_changed("remove_mean", current_value)
+
+    def on_mean_path_changed(self):
+        """Handle changes in mean hologram image path"""
+        if self.controller:
+            new_path = self.mean_image_text.get("1.0", tk.END).strip()
+            # Only trigger if path actually changed
+            if hasattr(self, 'last_mean_path') and new_path == self.last_mean_path:
+                return
+            
+            self.last_mean_path = new_path
+            # Update parameters dict
+            if hasattr(self, 'parameters'):
+                self.parameters["mean_hologram_image_path"] = new_path
+            
+            # Notify controller of parameter change
+            self.controller.on_parameter_changed("mean_hologram_image_path", new_path)
 
     def init_actions_tab(self):
         display_options = [
@@ -714,7 +825,7 @@ class HoloTrackerApp:
 
         self.image_canvas.bind("<Configure>", self._on_canvas_resize)
         self.image_canvas.bind("<Button-1>", self._on_image_click)
-        self.image_canvas.bind("<Button-3>", self._on_image_right_click)  # Right click for focus analysis
+        self.image_canvas.bind("<Button-3>", self._on_image_right_click)  # Right click for context menu (save/focus analysis)
 
     def display_hologram_image(self, pil_image):
         self.pil_image = pil_image
@@ -820,32 +931,181 @@ class HoloTrackerApp:
         except Exception as e:
             print(f"Error handling image click: {e}")
 
-    def _on_image_right_click(self, event):
-        """Handle right click on image for focus analysis (TEST_MODE only, XY images only)"""
-        if not self.pil_image or not self.controller:
+    def _save_current_image(self):
+        """Save the currently displayed image to file"""
+        print("🔧 DEBUG: _save_current_image called")
+        
+        if not self.pil_image:
+            messagebox.showwarning("Save Image", "No image is currently displayed.")
             return
             
-        # Check if we're in TEST_MODE
-        if not hasattr(self.controller, 'core') or not hasattr(self.controller.core, 'mode'):
+        try:
+            from tkinter import filedialog
+            import os
+            
+            # Get current display type for default filename
+            display_type = self.display_combobox.get() if hasattr(self, 'display_combobox') else "image"
+            # Clean display type for filename (remove spaces and special chars)
+            clean_display_type = display_type.replace(" ", "_").replace("/", "_")
+            print(f"🔧 DEBUG: Clean display type: {clean_display_type}")
+            
+            # Open save dialog with simplified options
+            filename = filedialog.asksaveasfilename(
+                title="Save Image As",
+                defaultextension=".png",
+                filetypes=[
+                    ("PNG files", "*.png"),
+                    ("JPEG files", "*.jpg"),
+                    ("TIFF files", "*.tif"),
+                    ("BMP files", "*.bmp"),
+                    ("All files", "*.*")
+                ]
+            )
+            
+            print(f"🔧 DEBUG: Selected filename: {filename}")
+            
+            # If user selected a file but wants to use display type name, suggest it
+            if filename and not os.path.basename(filename).startswith(clean_display_type):
+                # User can still change the name in the dialog
+                pass
+            
+            if filename:
+                # Save the image
+                self.pil_image.save(filename)
+                print(f"🔧 DEBUG: Image saved successfully")
+                messagebox.showinfo("Save Image", f"Image saved successfully to:\n{filename}")
+            else:
+                print("🔧 DEBUG: Save dialog cancelled")
+                
+        except Exception as e:
+            print(f"🔧 DEBUG: Error in save: {e}")
+            messagebox.showerror("Save Image", f"Error saving image:\n{str(e)}")
+
+    def _on_image_right_click(self, event):
+        """Handle right click on image - show context menu"""
+        print("🔧 DEBUG: Right click detected")
+        
+        if not self.pil_image:
+            print("🔧 DEBUG: No image available")
             return
+            
+        try:
+            # Create context menu
+            context_menu = tk.Menu(self.root, tearoff=0)
+            
+            # Check if we're in TEST_MODE (required for both options)
+            in_test_mode = self._is_in_test_mode()
+            print(f"🔧 DEBUG: In test mode: {in_test_mode}")
+            
+            # Add Save Image option (available in TEST_MODE on all display types)
+            if in_test_mode:
+                print("🔧 DEBUG: Adding enabled Save Image option")
+                context_menu.add_command(
+                    label="Save Image",
+                    command=self._save_current_image
+                )
+            else:
+                print("🔧 DEBUG: Adding disabled Save Image option")
+                context_menu.add_command(
+                    label="Save Image (TEST mode required)",
+                    state="disabled"
+                )
+            
+            # Add separator
+            context_menu.add_separator()
+            
+            # Add Focus Analysis option (only in TEST_MODE with non-FFT XY images)
+            focus_available = self._is_focus_analysis_available()
+            print(f"🔧 DEBUG: Focus available: {focus_available}")
+            
+            if focus_available:
+                print("🔧 DEBUG: Adding enabled Focus Analysis option")
+                context_menu.add_command(
+                    label="Focus Analysis",
+                    command=lambda: self._perform_focus_analysis_at_click(event)
+                )
+            else:
+                # Add disabled option with explanation
+                reason = self._get_focus_unavailable_reason()
+                context_menu.add_command(
+                    label=f"Focus Analysis ({reason})",
+                    state="disabled"
+                )
+            
+            # Show context menu at click position
+            print(f"🔧 DEBUG: Showing context menu at ({event.x_root}, {event.y_root})")
+            context_menu.tk_popup(event.x_root, event.y_root)
+            
+        except Exception as e:
+            print(f"🔧 DEBUG: Error showing context menu: {e}")
+            # Note: Let the menu destroy itself naturally when user clicks elsewhere
+
+    def _is_in_test_mode(self):
+        """Check if we're currently in TEST mode"""
+        if not self.controller:
+            return False
+            
+        if not hasattr(self.controller, 'core') or not hasattr(self.controller.core, 'mode'):
+            return False
+            
+        return self.controller.core.mode == 'TEST'
+
+    def _is_focus_analysis_available(self):
+        """Check if focus analysis is available for current state"""
+        # Must be in TEST mode
+        if not self._is_in_test_mode():
+            return False
+            
+        # Check display type - exclude FFT displays and XZ/YZ projections
+        display_type = self.display_combobox.get() if hasattr(self, 'display_combobox') else ""
+        if not display_type:
+            return False
+            
+        # Exclude FFT displays
+        if "FFT" in display_type:
+            return False
+            
+        # Exclude XZ and YZ projections
+        if "XZ" in display_type or "YZ" in display_type:
+            return False
+            
+        return True
+
+    def _get_focus_unavailable_reason(self):
+        """Get reason why focus analysis is unavailable"""
+        if not self.controller:
+            return "no controller"
+            
+        if not hasattr(self.controller, 'core') or not hasattr(self.controller.core, 'mode'):
+            return "no core"
             
         if self.controller.core.mode != 'TEST':
-            messagebox.showwarning("Focus Analysis", "Focus analysis is only available in TEST mode.")
-            return
+            return "TEST mode required"
             
-        # Check if we're displaying an XY image (not XZ or YZ projection)
-        display_type = self.display_combobox.get()
-        if not display_type or "XZ" in display_type or "YZ" in display_type:
-            messagebox.showinfo("Focus Analysis", "Focus analysis is only available on XY images (not XZ or YZ projections).")
-            return
+        display_type = self.display_combobox.get() if hasattr(self, 'display_combobox') else ""
+        
+        if "FFT" in display_type:
+            return "not available on FFT displays"
             
+        if "XZ" in display_type or "YZ" in display_type:
+            return "XY images only"
+            
+        return "unavailable"
+
+    def _perform_focus_analysis_at_click(self, event):
+        """Perform focus analysis at the clicked position"""
+        print("🔧 DEBUG: _perform_focus_analysis_at_click called")
+        
         try:
             # Get click coordinates on canvas
             canvas_x = self.image_canvas.canvasx(event.x)
             canvas_y = self.image_canvas.canvasy(event.y)
+            print(f"🔧 DEBUG: Canvas coordinates: ({canvas_x}, {canvas_y})")
             
             # Convert canvas coordinates to original image coordinates
             img_w, img_h = self.pil_image.size
+            print(f"🔧 DEBUG: Image size: {img_w}x{img_h}")
+            
             if self.zoom_mode == "stretch":
                 canvas_w = self.image_canvas.winfo_width()
                 canvas_h = self.image_canvas.winfo_height()
@@ -853,17 +1113,25 @@ class HoloTrackerApp:
             else:  # "real" mode
                 scale = self.zoom_level
                 
+            print(f"🔧 DEBUG: Scale: {scale}, Zoom mode: {self.zoom_mode}")
+                
             # Calculate original image coordinates
             orig_x = int(canvas_x / scale)
             orig_y = int(canvas_y / scale)
+            print(f"🔧 DEBUG: Original coordinates: ({orig_x}, {orig_y})")
             
             # Check bounds
             if 0 <= orig_x < img_w and 0 <= orig_y < img_h:
+                print("🔧 DEBUG: Opening focus analysis dialog...")
                 # Open focus analysis dialog
                 self._open_focus_analysis_dialog(orig_x, orig_y)
+            else:
+                print(f"🔧 DEBUG: Coordinates out of bounds: ({orig_x}, {orig_y}) vs ({img_w}, {img_h})")
+                messagebox.showwarning("Focus Analysis", "Click position is outside image bounds.")
                     
         except Exception as e:
-            print(f"Error handling image right click: {e}")
+            print(f"🔧 DEBUG: Error in focus analysis: {e}")
+            messagebox.showerror("Focus Analysis", f"Error performing focus analysis:\n{str(e)}")
 
     def init_localisations_tab(self):
         self.fig = Figure(figsize=(6,6), dpi=100)
@@ -1182,6 +1450,8 @@ class HoloTrackerApp:
         if "mean_hologram_image_path" in self.parameters:
             self.mean_image_text.delete(1.0, tk.END)
             self.mean_image_text.insert(tk.END, self.parameters["mean_hologram_image_path"])
+            # Initialize last_mean_path for change detection
+            self.last_mean_path = self.parameters["mean_hologram_image_path"]
             
         # Update last_value for display and plane widgets in actions tab
         if hasattr(self, 'display_combobox') and hasattr(self.display_combobox, 'last_value'):

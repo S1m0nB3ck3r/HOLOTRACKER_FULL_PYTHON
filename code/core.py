@@ -430,8 +430,15 @@ class HoloTrackerCore:
         img = img.resize((x, y))
         return img
 
-    def compute_mean_hologram(self, directory, image_type, progress_callback=None):
-        """Compute mean hologram from all images in directory"""
+    def compute_mean_hologram(self, directory, image_type, progress_callback=None, mean_type="arithmetic"):
+        """Compute mean hologram from all images in directory
+        
+        Args:
+            directory: Directory containing images
+            image_type: Type of images to process
+            progress_callback: Callback for progress updates
+            mean_type: "arithmetic" or "logarithmic"
+        """
         ext_map = {"BMP": ".bmp", "TIF": ".tif", "JPG": ".jpg", "PNG": ".png"}
         ext = ext_map[image_type]
         
@@ -446,11 +453,17 @@ class HoloTrackerCore:
         total_images = len(image_files)
         mean_image = None
         
+        print(f"🧮 Core: Computing {mean_type} mean of {total_images} images")
+        
         for i, filename in enumerate(image_files):
             filepath = os.path.join(directory, filename)
             try:
                 img = Image.open(filepath).convert('L')  # Convert to grayscale
                 img_array = np.array(img, dtype=np.float64)
+                
+                # Avoid zero values for logarithmic mean by adding small epsilon
+                if mean_type == "logarithmic":
+                    img_array = np.log(img_array + 1e-6)
                 
                 if mean_image is None:
                     mean_image = img_array
@@ -464,25 +477,39 @@ class HoloTrackerCore:
             except Exception as e:
                 raise Exception(f"Error processing {filename}: {str(e)}")
         
-        # Finalize mean (keep in [0,255] range)
+        # Finalize mean calculation
         mean_image = mean_image / total_images
+        
+        # For logarithmic mean, take exponential to get back to linear space
+        if mean_type == "logarithmic":
+            mean_image = np.exp(mean_image)
+            print("🧮 Core: Applied exponential for logarithmic mean")
         
         # Create mean directory
         mean_dir = os.path.join(directory, "mean")
         os.makedirs(mean_dir, exist_ok=True)
         
-        # Save as .tif for calculations (float32 precision, [0,255] range)
-        mean_tif_path = os.path.join(mean_dir, "mean_hologram.tif")
+        # Generate appropriate filenames based on mean type
+        if mean_type == "arithmetic":
+            tif_filename = "mean_arith.tif"
+            bmp_filename = "mean_arith.bmp"
+        else:  # logarithmic
+            tif_filename = "mean_log.tif"
+            bmp_filename = "mean_log.bmp"
+        
+        # Save as .tif for calculations (float32 precision, full dynamic range)
+        mean_tif_path = os.path.join(mean_dir, tif_filename)
         mean_image_float32 = mean_image.astype(np.float32)
         mean_pil = Image.fromarray(mean_image_float32, mode='F')  # 'F' mode for 32-bit float
         mean_pil.save(mean_tif_path)
         
-        # Save as .bmp for visualization (uint8, [0,255] range)
-        mean_bmp_path = os.path.join(mean_dir, "mean_hologram.bmp")
+        # Save as .bmp for visualization (uint8, clipped to [0,255] range)
+        mean_bmp_path = os.path.join(mean_dir, bmp_filename)
         mean_image_uint8 = np.clip(mean_image, 0, 255).astype(np.uint8)
         mean_pil_vis = Image.fromarray(mean_image_uint8, mode='L')
         mean_pil_vis.save(mean_bmp_path)
         
+        print(f"✅ Core: {mean_type.capitalize()} mean saved as {tif_filename}")
         return mean_tif_path  # Return the .tif path for use in calculations
 
     def batch_process(self):
