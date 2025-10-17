@@ -9,11 +9,6 @@ from cupyx import jit
 import cupy as cp
 from cupy.fft import rfft2, fft2, ifft2, fftshift, ifftshift, fftn, ifftn
 
-
-def test_var(var):
-    return "VAR: " + str(type(var)) + str(var)
-
-
 def read_image(path_image, sizeX = 0, sizeY = 0):
         
         h_holo = np.asarray(Image.open(path_image))
@@ -31,7 +26,6 @@ def read_image(path_image, sizeX = 0, sizeY = 0):
         h_holo = h_holo.astype(np.float32)
         return(h_holo)
 
-
 def display(plan):
 
     if isinstance(plan, cp.ndarray):
@@ -47,7 +41,6 @@ def display(plan):
     
     img.show(title = "plan")
     img.close()
-
 
 @cp.fuse()
 def div_holo(A, B):
@@ -75,81 +68,12 @@ def phase(planComplex):
     else:
         return(np.arctan(np.imag(planComplex) /np.real(planComplex)))
 
-def affiche_particule(x, y, z, boxSizeXY, boxSizeZ, d_volume):
-
-    sizeX, sizeY, sizeZ = d_volume.shape
-    planXY = np.zeros(shape=(boxSizeXY, boxSizeXY))
-    planXZ = np.zeros(shape=(boxSizeXY, boxSizeZ))
-    planYZ = np.zeros(shape=(boxSizeXY, boxSizeZ))
-
-
-    #test des limites des coordonées xyz
-    xMin = int(x - boxSizeXY//2)
-    xMax = int(x + boxSizeXY//2)
-    yMin = int(y - boxSizeXY//2)
-    yMax = int(y + boxSizeXY//2)
-    zMin = int(z - boxSizeZ//2)
-    zMax = int(z + boxSizeZ//2)
-
-    xMin = xMin if xMin > 0 else 0
-    xMax = xMax if xMax < sizeX else sizeX 
-    yMin = yMin if yMin > 0 else 0 
-    yMax = yMax if yMax < sizeY else sizeY
-    zMin = zMin if zMin > 0 else 0 
-    zMax = zMax if zMax < sizeZ else sizeZ
-
-    if isinstance(d_volume, cp.ndarray):
-        if (d_volume.dtype == cp.complex64):
-            planXY_t = cp.asnumpy(intensite(d_volume[xMin : xMax, yMin : yMax, z ]))
-            planXY[0:boxSizeXY, 0:boxSizeXY] = planXY_t
-            planXZ[0:boxSizeXY, 0:boxSizeZ] = cp.asnumpy(intensite(d_volume[xMin : xMax, y, zMin : zMax]))
-            planYZ[0:boxSizeXY, 0:boxSizeZ] = cp.asnumpy(intensite(d_volume[x , yMin : yMax, zMin : zMax ]))
-        else:
-            planXY[0:boxSizeXY, 0:boxSizeXY]  = cp.asnumpy(d_volume[xMin : xMax, yMin : yMax, z ])
-            planXZ[0:boxSizeXY, 0:boxSizeZ]  = cp.asnumpy(d_volume[xMin : xMax, y, zMin : zMax])
-            planYZ[0:boxSizeXY, 0:boxSizeZ]  = cp.asnumpy(d_volume[x , yMin : yMax, zMin : zMax ])
-    else:
-        if (d_volume.dtype == np.complex64):
-            planXY[0:boxSizeXY, 0:boxSizeXY]  = intensite(d_volume[xMin : xMax, yMin : yMax, z ])
-            planXZ[0:boxSizeXY, 0:boxSizeZ]  = intensite(d_volume[xMin : xMax, y, zMin : zMax])
-            planYZ[0:boxSizeXY, 0:boxSizeZ]  = intensite(d_volume[x , yMin : yMax, zMin : zMax ])
-        else:
-            planXY[0:boxSizeXY, 0:boxSizeXY]  = d_volume[xMin : xMax, yMin : yMax, z ]
-            planXZ[0:boxSizeXY, 0:boxSizeZ]  = d_volume[xMin : xMax, y, zMin : zMax]
-            planYZ[0:boxSizeXY, 0:boxSizeZ]  = d_volume[x , yMin : yMax, zMin : zMax ]
-
-    min = planXY.min()
-    max = planXY.max()
-    planXY = (planXY - min) * 255 / (max - min)
-            
-    #planXZ = np.rot90(planXZ)
-    min = planXZ.min()
-    max = planXZ.max()
-    planXZ = (planXZ - min) * 255 / (max - min)
-    #planXZ = np.rot90(planXZ)
-
-            
-    #planYZ = np.rot90(planYZ)
-    min = planYZ.min()
-    max = planYZ.max()
-    planYZ = (planYZ - min) * 255 / (max - min)
-    #planYZ = planYZ.astype(np.uint8)
-    #planYZ = np.rot90(planYZ)
-    planYZ.reshape((boxSizeXY, boxSizeZ))
-
-
-    planTot = np.concatenate((planXY, planXZ, planYZ), axis = 1)
-    img = Image.fromarray(planTot)
-    img.show(title = "objet 3 plans")
-
-
 def get_sub_plane(x, y, z, boxSizeXY, boxSizeZ, d_volume):
 
     sizeX, sizeY, sizeZ = d_volume.shape
     planXY = np.zeros(shape=(boxSizeXY, boxSizeXY))
     planXZ = np.zeros(shape=(boxSizeXY, boxSizeZ))
     planYZ = np.zeros(shape=(boxSizeXY, boxSizeZ))
-
 
     #test des limites des coordonées xyz
     xMin = int(x - boxSizeXY//2)
@@ -202,7 +126,6 @@ def get_sub_plane(x, y, z, boxSizeXY, boxSizeZ, d_volume):
 
     return np.concatenate((planXY, planXZ, planYZ), axis = 1)
 
-
 def calc_holo_moyen(dirPath, sizeX, sizeY, extension):
 
     mean_dir = os.path.join(dirPath, "mean")
@@ -242,38 +165,8 @@ def calc_holo_moyen(dirPath, sizeX, sizeY, extension):
         np.save(mean_file_path, arr=holo_m)
         return(holo_m)
 
-
-def analyse_array_cplx(data):
-    if isinstance(data, cp.ndarray):
-        h_data = intensite(cp.asnumpy(data))
-    else:
-        h_data = intensite(data)
-    
-    min = h_data.min()
-    max = h_data.max()
-    sum = h_data.sum()
-    mean = h_data.mean()
-    std = h_data.std()
-    # print('min = ', min, 'max = ', max, 'sum =', sum, 'mean = ', mean, 'std =', std)
-    return(min, max, mean, sum, std)
-
-def analyse_array(data, titre = ""):
-    if isinstance(data, cp.ndarray):
-        h_data = cp.asnumpy(data)
-    else:
-        h_data = data
-    
-    min = h_data.min()
-    max = h_data.max()
-    sum = h_data.sum()
-    mean = h_data.mean()
-    std = h_data.std()
-    # print(titre, ' min = ', min, 'max = ', max, 'sum =', sum, 'mean = ', mean, 'std =', std)
-    return(min, max, mean, sum, std)
-
 def sum_plans(d_volum_focus):
     return(d_volum_focus.sum(axis = 0), d_volum_focus.sum(axis = 1), d_volum_focus.sum(axis = 2))
-
 
 @jit.rawkernel()
 def d_filter_FFT_3D(d_VOLUME_IN, d_VOLUME_OUT, sizeX, sizeY, sizeZ, dMinXY, dMaxXY, dMinZ, dMaxZ):
@@ -335,7 +228,6 @@ def projection_bool(d_bin_volume, axis):
 
     return d_projection
 
-
 @jit.rawkernel()
 def d_projection_bool(d_bin_volume, d_projection, sizeX, sizeY, sizeZ, axis):
 
@@ -370,10 +262,6 @@ def d_projection_bool(d_bin_volume, d_projection, sizeX, sizeY, sizeZ, axis):
                 if d_bin_volume[ii, jj, kk]:
                     val = 1
             d_projection[ii, jj] = val
-
-
-
-
 
     
 

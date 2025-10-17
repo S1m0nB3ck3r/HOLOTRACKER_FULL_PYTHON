@@ -27,7 +27,6 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 
-
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import math
@@ -49,7 +48,43 @@ class Focus_type(Enum):
     SUM_OF_VARIANCE = 3
     TENEGRAD = 4
     SUM_OF_INTENSITY = 5
+    SUM_OF_GRADIENT = 6
+    MEAN_ALL = 7
+    MEAN_LOG_ALL = 8
 
+def focus_sum_of_gradient(d_volume_IN, d_focus_OUT, sumSize):
+    """
+    Compute sum of squared gradient (|dx|^2 + |dy|^2) per plane and local average.
+    d_volume_IN : 3D array (Z,Y,X) (cupy)
+    d_focus_OUT  : 3D array (Z,Y,X) output (cupy)
+    sumSize      : int, window size for local averaging (will be made odd)
+    """
+    sizeZ, sizeY, sizeX = cp.shape(d_volume_IN)
+
+    # allocate temporary planes
+    module_plane = cp.zeros(shape=(sizeY, sizeX), dtype=cp.float32)
+    gradx_plane = cp.zeros(shape=(sizeY, sizeX), dtype=cp.float32)
+    grady_plane = cp.zeros(shape=(sizeY, sizeX), dtype=cp.float32)
+
+    # ensure odd sumSize
+    sumSize = (sumSize // 2) * 2 + 1
+    convolve_plane = cp.full(fill_value=1.0 / (sumSize * sumSize), dtype=cp.float32, shape=(sumSize, sumSize))
+
+    if d_volume_IN.dtype == cp.complex64:
+        for p in range(sizeZ):
+            module_plane = module(d_volume_IN[p, :, :])
+            # sobel returns gradient approximation
+            gradx_plane = cp_ndimage.sobel(module_plane, axis=1)
+            grady_plane = cp_ndimage.sobel(module_plane, axis=0)
+            mag_plane = cp.square(gradx_plane) + cp.square(grady_plane)
+            cp_ndimage.convolve(mag_plane, convolve_plane, output=d_focus_OUT[p, :, :], mode='reflect')
+    else:
+        for p in range(sizeZ):
+            module_plane = d_volume_IN[p, :, :]
+            gradx_plane = cp_ndimage.sobel(module_plane, axis=1)
+            grady_plane = cp_ndimage.sobel(module_plane, axis=0)
+            mag_plane = cp.square(gradx_plane) + cp.square(grady_plane)
+            cp_ndimage.convolve(mag_plane, convolve_plane, output=d_focus_OUT[p, :, :], mode='reflect')
 
 def focus_sum_square_of_laplacien(d_volume_IN, d_focus_OUT, sumSize):
     
@@ -145,7 +180,6 @@ def focus_TENEGRAD(d_volume_IN, d_focus_OUT, sumSize):
             # plane_tenegard = plane_ten1**2 + plane_ten2**2
             cp_ndimage.convolve(plane_tenegard, convolve_plane,  output = d_focus_OUT[p,:,:], mode = 'reflect')
 
-
 def focus_SUM_OF_INTENSITY(d_volume_IN, d_focus_OUT, sumSize):
 
     sizeZ, sizeY, sizeX  = cp.shape(d_volume_IN)
@@ -167,8 +201,71 @@ def focus_SUM_OF_INTENSITY(d_volume_IN, d_focus_OUT, sumSize):
             plane = d_volume_IN[p,:,:]**2
             cp_ndimage.convolve(plane, convolve_plane, output = d_focus_OUT[p,:,:], mode = 'reflect')
 
+def focus_MEAN_ALL(d_volume_IN, d_focus_OUT, sumSize, d_accumulator=None):
+    """
+    Calcule la moyenne de tous les types de focus
+    Traitement plan par plan pour économiser la mémoire GPU
+    """
+    nb_planes, height, width = d_volume_IN.shape
+    
+    # Allocate 2D temporary buffers (one plane only) - économise beaucoup de mémoire
+    temp_plane = cp.zeros((height, width), dtype=cp.float32)
+    accumulator_plane = cp.zeros((height, width), dtype=cp.float32)
+    
+    # Process each plane independently
+    for plane_idx in range(nb_planes):
+        accumulator_plane[:] = 0  # Reset accumulator for this plane
+        count = 0
+        
+        # Apply each focus method to this single plane
+        for focus_method in [focus_SUM_OF_INTENSITY, focus_sum_square_of_laplacien, 
+                             focus_sum_of_variance, focus_TENEGRAD, focus_sum_of_gradient]:
+            # Create a view of the single plane as a pseudo-3D volume (1, H, W)
+            plane_view_in = d_volume_IN[plane_idx:plane_idx+1, :, :]
+            temp_plane_view = temp_plane[cp.newaxis, :, :]  # Add dimension for compatibility
+            
+            focus_method(plane_view_in, temp_plane_view, sumSize)
+            
+            # Accumulate result (remove the extra dimension)
+            accumulator_plane[:] = accumulator_plane + temp_plane_view[0, :, :]
+            count += 1
+        
+        # Store averaged result for this plane
+        d_focus_OUT[plane_idx, :, :] = accumulator_plane / count
 
-
+def focus_MEAN_LOG_ALL(d_volume_IN, d_focus_OUT, sumSize, d_accumulator=None):
+    """
+    Calcule la moyenne logarithmique de tous les types de focus
+    moyenne_log = exp(mean(log(x))) pour éviter overflow/underflow
+    Traitement plan par plan pour économiser la mémoire GPU
+    """
+    nb_planes, height, width = d_volume_IN.shape
+    
+    # Allocate 2D temporary buffers (one plane only) - économise beaucoup de mémoire
+    temp_plane = cp.zeros((height, width), dtype=cp.float32)
+    accumulator_plane = cp.zeros((height, width), dtype=cp.float32)
+    
+    # Process each plane independently
+    for plane_idx in range(nb_planes):
+        accumulator_plane[:] = 0  # Reset accumulator for this plane
+        count = 0
+        
+        # Apply each focus method to this single plane
+        for focus_method in [focus_SUM_OF_INTENSITY, focus_sum_square_of_laplacien, 
+                             focus_sum_of_variance, focus_TENEGRAD, focus_sum_of_gradient]:
+            # Create a view of the single plane as a pseudo-3D volume (1, H, W)
+            plane_view_in = d_volume_IN[plane_idx:plane_idx+1, :, :]
+            temp_plane_view = temp_plane[cp.newaxis, :, :]  # Add dimension for compatibility
+            
+            focus_method(plane_view_in, temp_plane_view, sumSize)
+            
+            # Accumulate log of result (remove the extra dimension)
+            # Ajouter un epsilon pour éviter log(0)
+            accumulator_plane[:] = accumulator_plane + cp.log(temp_plane_view[0, :, :] + 1e-10)
+            count += 1
+        
+        # Store averaged result for this plane (exp of mean of logs)
+        d_focus_OUT[plane_idx, :, :] = cp.exp(accumulator_plane / count)
 
 def focus(d_volume_IN, d_focus_OUT, sumSize, type_of_focus):
 
@@ -180,3 +277,9 @@ def focus(d_volume_IN, d_focus_OUT, sumSize, type_of_focus):
         focus_sum_square_of_laplacien(d_volume_IN, d_focus_OUT, sumSize)
     elif type_of_focus == Focus_type.SUM_OF_INTENSITY:
         focus_SUM_OF_INTENSITY(d_volume_IN, d_focus_OUT, sumSize)
+    elif type_of_focus == Focus_type.SUM_OF_GRADIENT:
+        focus_sum_of_gradient(d_volume_IN, d_focus_OUT, sumSize)
+    elif type_of_focus == Focus_type.MEAN_ALL:
+        focus_MEAN_ALL(d_volume_IN, d_focus_OUT, sumSize)
+    elif type_of_focus == Focus_type.MEAN_LOG_ALL:
+        focus_MEAN_LOG_ALL(d_volume_IN, d_focus_OUT, sumSize)

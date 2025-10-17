@@ -87,8 +87,6 @@ def calc_threshold(d_focus_volume, nbStdVar):
     mean = cp.mean(d_focus_volume)
     stdVar = cp.std(d_focus_volume)
     threshold = mean.item() + nbStdVar * stdVar.item()
-    print("threshold computation \n")
-    print("mean = ", mean.item(), " std = ", stdVar.item(), "nb std var = ", nbStdVar, " threshold = ", threshold)
     return(threshold)
 
 #binarise un volume de taille sizeX, sizeY, sizeZ
@@ -128,7 +126,6 @@ def cuda_Binaries_Focus_Plan(d_bin_plan, d_focus_plan, threshold, sizeX, sizeY):
 
     jit.syncthreads()
 
-
 def binaries_Focus_Volume_local_contrast(d_bin_volume, d_focus_volume, threshold_nb_mean, sizeMeanXY, sizeMeanZ):
 
     sizeX = d_focus_volume.shape[2]
@@ -146,7 +143,6 @@ def binaries_Focus_Volume_local_contrast(d_bin_volume, d_focus_volume, threshold
     #convolution du plan avec convolve_volume
     d_threashold_volume = cp_ndimage.convolve(input = d_focus_volume, weights = convolve_volume, mode = 'reflect') * threshold_nb_mean
     cp.greater(d_focus_volume, d_threashold_volume, out = d_bin_volume)
-
 
 def div_by_mean_convolution(d_focus_volume, d_focus_volume_2, sizeMeanXY, sizeMeanZ):
 
@@ -197,111 +193,6 @@ def CCL3D(d_bin_volume, d_focus_volume,  t_threshold, threshold, n_connectivity 
 
     return(labels, num_label)
 
-
-
-# @njit(nopython = True, fastmath=True)
-# def CCA(h_labels_volume, h_focus_volume, features, i_image, dx, dy, dz):
-
-#     #reinit
-#     for i in range(len(features)):
-#         features[i]['baryX'] = 0.0
-#         features[i]['baryY'] = 0.0
-#         features[i]['baryZ'] = 0.0
-#         features[i]['i_image'] = i_image
-#         features[i]['nb_pix'] = 0
-#         features[i]['xMin'] = 0.0
-#         features[i]['xMax'] = 0.0
-#         features[i]['yMin'] = 0.0
-#         features[i]['yMax'] = 0.0
-#         features[i]['zMin'] = 0.0
-#         features[i]['zMax'] = 0.0
-#         features[i]['pSum'] = 0.0
-#         features[i]['pxSumX'] = 0.0
-#         features[i]['pxSumY'] = 0.0
-#         features[i]['pxSumZ'] = 0.0
-
-#     sizeX, sizeY, sizeZ = h_labels_volume.shape
-#     #creation de la liste d'objets analysés
-#     #on parcours le volume labelisé
-#     for z in range(sizeZ):
-#         #print('z= ', z,'\n')
-#         for y in range(sizeY):
-#             for x in range(sizeX):
-#                 label = h_labels_volume[x,y,z]
-#                 if label!=0:
-#                     #print('xyz= ',x,' ',y, ' ', z, 'label :', label)
-#                     i = int(label-1)
-#                     #nb_pix
-#                     features[i]['nb_pix']+=1
-#                     #xMin
-#                     features[i]['xMin'] = min(features[i]['xMin'], x * dx)
-#                     #xMax
-#                     features[i]['xMax'] = max(features[i]['xMax'], x * dx)
-#                     features[i]['yMin'] = min(features[i]['yMin'], y * dy)
-#                     features[i]['yMax'] = max(features[i]['yMax'], y * dy)
-#                     features[i]['zMin'] = min(features[i]['zMin'], z * dz)
-#                     features[i]['zMax'] = max(features[i]['zMax'], z * dz)
-#                     features[i]['pSum'] += h_focus_volume[x,y,z]
-#                     features[i]['pxSumX'] += x * h_focus_volume[x,y,z]
-#                     features[i]['pxSumY'] += y * h_focus_volume[x,y,z] 
-#                     features[i]['pxSumZ'] += z * h_focus_volume[x,y,z] 
-
-#     #calcul des barycentres
-#     for i in range(len(features)):
-#         features[i]['baryX'] = dx *features[i]['pxSumX'] / features[i]['pSum']
-#         features[i]['baryY'] = dy * features[i]['pxSumY'] / features[i]['pSum']
-#         features[i]['baryZ'] = dz * features[i]['pxSumZ'] / features[i]['pSum']
-
-# #version test du CCA avec une liste de features de type np.ndarray2D
-# @njit(nopython = True)
-# def CCA2(h_labels_volume, h_focus_volume, features):
-
-#     sizeX, sizeY, sizeZ = h_labels_volume.shape
-#     #creation de la liste d'objets analysés
-#     #on parcours le volume labelisé
-#     for z in range(sizeZ):
-#         #print('z= ', z,'\n')
-#         for y in range(sizeY):
-#             for x in range(sizeX):
-#                 label = h_labels_volume[x,y,z]
-#                 if label!=0:
-#                     #print('xyz= ',x,' ',y, ' ', z, 'label :', label)
-#                     i = int(label-1)
-#                     #label
-#                     features[i,0] = label
-#                     #nb_pix
-#                     features[i, 1]+=1
-#                     #xMin
-#                     features[i, 5] = min(features[i, 2], x)
-#                     #xMax
-#                     features[i, 5] = max(features[i, 3], x)
-#                     #yMin
-#                     features[i, 6] = min(features[i, 4], y)
-#                     #yMax
-#                     features[i, 7] = max(features[i, 5], y)
-#                     #zMin
-#                     features[i, 8] = min(features[i, 6], z)
-#                     #zMax
-#                     features[i, 9] = max(features[i, 7], z)
-#                     #pxSumX
-#                     features[i, 10] += h_focus_volume[x,y,z]
-#                     #pxSumY
-#                     features[i, 11] += x * h_focus_volume[x,y,z]
-#                     #pxSumZ
-#                     features[i, 12] += y * h_focus_volume[x,y,z]
-#                     #pSum
-#                     features[i, 13] += z * h_focus_volume[x,y,z] 
-
-#     #calcul des barycentres
-#     for i in range(len(features)):
-#         #baryX = psumX / psum
-#         features[i, 2]= features[i, 10] / features[i, 13]
-#         #baryY = psumY / psum
-#         features[i, 3] = features[i, 11] / features[i, 13]
-#         #baryZ = psumZ / psum
-#         features[i, 4] = features[i, 12] / features[i, 13]
-
-
 @jit.rawkernel()
 def device_CCA(d_volume_label, d_volume_focus, d_features, sizeX, sizeY, sizeZ, dx, dy, dz):
 
@@ -341,7 +232,6 @@ def device_CCA(d_volume_label, d_volume_focus, d_features, sizeX, sizeY, sizeZ, 
             
     jit.syncthreads()
 
-
 @jit.rawkernel()
 def device_CCA_plane(d_plane_label, d_plane_focus, d_features, sizeX, sizeY, dx, dy, dz, planeNumber):
     #version optimisé de device_CCA pour ne travailler que sur un plan et économiser de la méméoire GPU
@@ -379,7 +269,6 @@ def device_CCA_plane(d_plane_label, d_plane_focus, d_features, sizeX, sizeY, dx,
             jit.atomic_add(d_features, (index, 4), focus)
             
     jit.syncthreads()
-
 
 def CCA_CUDA(h_volume_label, d_volume_focus, number_of_labels, i_image, sizeX, sizeY, sizeZ, dx, dy, dz):
 
@@ -420,7 +309,6 @@ def CCA_CUDA(h_volume_label, d_volume_focus, number_of_labels, i_image, sizeX, s
     features['i_image'] = i_image
 
     return features
-
 
 def CCA_CUDA_float(volume_label, d_volume_focus, number_of_labels, i_image, sizeX, sizeY, sizeZ, dx, dy, dz):
 

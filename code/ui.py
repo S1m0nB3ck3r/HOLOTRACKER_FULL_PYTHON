@@ -8,6 +8,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 import numpy as np
 import json
 import os
+from ui_styles import ICONS, format_button_text, create_icon_button
 
 class ToolTip:
     """Create a tooltip for a given widget"""
@@ -146,7 +147,7 @@ class HoloTrackerApp:
         dir_scroll = ttk.Scrollbar(dir_frame, orient="horizontal", command=self.dir_text.xview)
         dir_scroll.grid(row=1, column=0, sticky="ew")
         self.dir_text.configure(xscrollcommand=dir_scroll.set)
-        self.browse_button = ttk.Button(self.tab_path, text="Browse", command=self.browse_directory)
+        self.browse_button = ttk.Button(self.tab_path, text=format_button_text("Browse", "folder"), command=self.browse_directory, bootstyle="info")
         self.browse_button.grid(row=0, column=2, padx=5, pady=5)
 
         # Image type
@@ -177,11 +178,11 @@ class HoloTrackerApp:
         self.mean_image_text.bind("<FocusOut>", lambda e: self.on_mean_path_changed())
         self.mean_image_text.bind("<KeyRelease>", lambda e: self.on_mean_path_changed())
         
-        self.browse_mean_button = ttk.Button(self.tab_path, text="Browse", command=self.browse_mean_image)
+        self.browse_mean_button = ttk.Button(self.tab_path, text=format_button_text("Browse", "file"), command=self.browse_mean_image, bootstyle="info")
         self.browse_mean_button.grid(row=2, column=2, padx=5, pady=5)
 
         # Mean hologram computation button
-        self.compute_mean_button = ttk.Button(self.tab_path, text="Mean hologram computation", command=self.compute_mean_hologram)
+        self.compute_mean_button = ttk.Button(self.tab_path, text=format_button_text("Mean hologram computation", "compute"), command=self.compute_mean_hologram, bootstyle="primary")
         self.compute_mean_button.grid(row=3, column=0, columnspan=3, pady=10)
         
         # Add tooltip to explain mean hologram computation
@@ -190,7 +191,6 @@ class HoloTrackerApp:
                 "The mean hologram is used to clean individual holograms\n"
                 "by subtracting background noise and common artifacts.\n"
                 "The result is saved in a 'mean' subfolder in .tif format")
-
 
     def browse_directory(self):
         directory = filedialog.askdirectory(title="Select Holograms Directory")
@@ -341,7 +341,7 @@ class HoloTrackerApp:
         focus_frame = ttk.LabelFrame(analyse_frame, text="Focus")
         focus_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
         ttk.Label(focus_frame, text="Focus type:").grid(row=0, column=0, sticky="w")
-        self.focus_type_combobox = ttk.Combobox(focus_frame, values=["SUM_OF_INTENSITY", "SUM_OF_LAPLACIAN", "SUM_OF_VARIANCE", "TENEGRAD"], width=25)
+        self.focus_type_combobox = ttk.Combobox(focus_frame, values=["SUM_OF_INTENSITY", "SUM_OF_LAPLACIAN", "SUM_OF_VARIANCE", "TENEGRAD", "SUM_OF_GRADIENT", "MEAN_ALL", "MEAN_LOG_ALL"], width=25)
         self.focus_type_combobox.grid(row=0, column=1, sticky="w")
         self.focus_type_combobox.last_value = None
         
@@ -383,7 +383,7 @@ class HoloTrackerApp:
         
         ccl_frame = ttk.LabelFrame(analyse_frame, text="CCL parameters")
         ccl_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
-        self.threshold_entry = self._add_label_entry(ccl_frame, "Threshold (N x Standard deviation):", 0, IntegerEntry)
+        self.threshold_entry = self._add_label_entry(ccl_frame, "Threshold (N x Standard deviation):", 0, ScientificFloatEntry)
         
         # Move batch threshold combobox under Threshold in CCL parameters
         ttk.Label(ccl_frame, text="Batch threshold:").grid(row=1, column=0, sticky="w")
@@ -422,7 +422,7 @@ class HoloTrackerApp:
         
         # Map UI label names to parameter names used in core
         param_name_map = {
-            "wavelength": "medium_wavelength",
+            "wavelength": "wavelength",  # Fixed: should use "wavelength" not "medium_wavelength"
             "optical": "medium_optical_index", 
             "Holo": "holo_size_x" if "X" in text else "holo_size_y" if "Y" in text else "holo_size",
             "pixel": "pixel_size",  # Use same name as in update_parameters_from_ui
@@ -511,10 +511,15 @@ class HoloTrackerApp:
         self.display_combobox.last_value = None
         self.display_combobox.bind("<<ComboboxSelected>>", self.on_display_changed)
         
+        # LOG checkbox next to Display
+        self.display_log_var = tk.BooleanVar(value=False)
+        self.display_log_checkbox = ttk.Checkbutton(self.tab_actions, text="LOG", variable=self.display_log_var, command=self.on_display_log_changed)
+        self.display_log_checkbox.grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        
         # Additional display options (moved between Display and Plane number)
-        additional_display_options = ["None", "Centroid positions", "Segmentation"]
+        additional_display_options = ["None", "Centroid positions", "Segmentation", "Segmentation + Centroid"]
         ttk.Label(self.tab_actions, text="Additional display:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.additional_display_combobox = ttk.Combobox(self.tab_actions, values=additional_display_options, width=15)
+        self.additional_display_combobox = ttk.Combobox(self.tab_actions, values=additional_display_options, width=20)
         self.additional_display_combobox.grid(row=1, column=1, sticky="w", padx=5, pady=5)
         self.additional_display_combobox.set("None")  # Default value
         self.additional_display_combobox.last_value = "None"
@@ -534,9 +539,9 @@ class HoloTrackerApp:
         self.hologram_combobox = ttk.Combobox(test_frame, width=40)
         self.hologram_combobox.grid(row=0, column=1, sticky="w", padx=5, pady=5)
         self.hologram_combobox.bind("<<ComboboxSelected>>", self.on_hologram_selected)
-        self.enter_test_button = ttk.Button(test_frame, text="ENTER IN TEST MODE", command=self.on_enter_test_mode)
+        self.enter_test_button = ttk.Button(test_frame, text=format_button_text("ENTER TEST MODE", "enter"), command=self.on_enter_test_mode, bootstyle="success")
         self.enter_test_button.grid(row=1, column=0, pady=10, padx=5)
-        self.exit_test_button = ttk.Button(test_frame, text="EXIT TEST MODE", command=self.on_exit_test_mode)
+        self.exit_test_button = ttk.Button(test_frame, text=format_button_text("EXIT TEST MODE", "exit"), command=self.on_exit_test_mode, bootstyle="secondary")
         self.exit_test_button.grid(row=1, column=1, pady=10, padx=5)
         # ==================== BATCH PROCESSING SECTION ====================
         batch_frame = ttk.LabelFrame(self.tab_actions, text="Batch Processing", padding=5)
@@ -546,9 +551,9 @@ class HoloTrackerApp:
         button_frame = ttk.Frame(batch_frame)
         button_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky="ew")
         
-        self.start_batch_button = ttk.Button(button_frame, text="START BATCH", command=self.on_start_batch)
+        self.start_batch_button = ttk.Button(button_frame, text=format_button_text("START BATCH", "start"), command=self.on_start_batch, bootstyle="success")
         self.start_batch_button.grid(row=0, column=0, padx=5)
-        self.stop_batch_button = ttk.Button(button_frame, text="STOP BATCH", command=self.on_stop_batch)
+        self.stop_batch_button = ttk.Button(button_frame, text=format_button_text("STOP BATCH", "stop"), command=self.on_stop_batch, bootstyle="danger")
         self.stop_batch_button.grid(row=0, column=1, padx=5)
         
         # Display results checkbox
@@ -578,10 +583,18 @@ class HoloTrackerApp:
         self.timing_label = ttk.Label(self.timing_frame, text="No processing performed", font=("Arial", 9), foreground="gray")
         self.timing_label.grid(row=1, column=0, sticky="w")
 
-        style = ttk.Style()
-        style.configure("Red.TButton", foreground="white", background="#d9534f")
-        self.exit_button = ttk.Button(self.tab_actions, text="EXIT", bootstyle="danger", command=self.on_closing)
-        self.exit_button.grid(row=5, column=0, columnspan=2, pady=10)
+        # Bottom buttons frame
+        bottom_buttons_frame = ttk.Frame(self.tab_actions)
+        bottom_buttons_frame.grid(row=6, column=0, columnspan=2, pady=10)
+        bottom_buttons_frame.columnconfigure(0, weight=1)
+        bottom_buttons_frame.columnconfigure(1, weight=1)
+
+        # Help and Exit buttons
+        self.help_button = ttk.Button(bottom_buttons_frame, text=format_button_text("HELP", "help"), bootstyle="info", command=self.show_help)
+        self.help_button.grid(row=0, column=0, padx=(0, 5), sticky="ew")
+        
+        self.exit_button = ttk.Button(bottom_buttons_frame, text=format_button_text("EXIT", "exit"), bootstyle="danger", command=self.on_closing)
+        self.exit_button.grid(row=0, column=1, padx=(5, 0), sticky="ew")
 
     def update_buttons_state(self, state):
         # WAIT: only allow ENTER TEST MODE and START BATCH
@@ -620,6 +633,14 @@ class HoloTrackerApp:
             if display_type != self.display_combobox.last_value:
                 self.display_combobox.last_value = display_type
                 self.controller.on_display_changed(display_type, plane_number, additional_display)
+    
+    def on_display_log_changed(self):
+        """Called when LOG checkbox changes"""
+        if self.controller:
+            display_type = self.display_combobox.get()
+            plane_number = int(self.plane_number_spinbox.get()) if self.plane_number_spinbox.get() else 0
+            additional_display = self.additional_display_combobox.get()
+            self.controller.on_display_changed(display_type, plane_number, additional_display)
 
     def on_plane_number_changed(self):
         """Called when plane number changes"""
@@ -813,10 +834,10 @@ class HoloTrackerApp:
         y_scroll.grid(row=0, column=4, sticky="ns")
 
         btn_width = 12
-        ttk.Button(image_frame, text="Zoom +", width=btn_width, command=self.zoom_in).grid(row=2, column=0, sticky="ew", pady=5)
-        ttk.Button(image_frame, text="Zoom -", width=btn_width, command=self.zoom_out).grid(row=2, column=1, sticky="ew", pady=5)
-        ttk.Button(image_frame, text="Stretch", width=btn_width, command=self.stretch_zoom).grid(row=2, column=2, sticky="ew", pady=5)
-        ttk.Button(image_frame, text="Reset zoom", width=btn_width, command=self.reset_zoom).grid(row=2, column=3, sticky="ew", pady=5)
+        ttk.Button(image_frame, text=format_button_text("Zoom +", "zoom_in"), width=btn_width, command=self.zoom_in, bootstyle="secondary").grid(row=2, column=0, sticky="ew", pady=5)
+        ttk.Button(image_frame, text=format_button_text("Zoom -", "zoom_out"), width=btn_width, command=self.zoom_out, bootstyle="secondary").grid(row=2, column=1, sticky="ew", pady=5)
+        ttk.Button(image_frame, text=format_button_text("Stretch", "stretch"), width=btn_width, command=self.stretch_zoom, bootstyle="secondary").grid(row=2, column=2, sticky="ew", pady=5)
+        ttk.Button(image_frame, text=format_button_text("Reset", "reset"), width=btn_width, command=self.reset_zoom, bootstyle="secondary").grid(row=2, column=3, sticky="ew", pady=5)
 
         self.zoom_mode = "stretch"  # "real" or "stretch" - default to stretch to fit frame
         self.zoom_level = 1.0
@@ -899,42 +920,38 @@ class HoloTrackerApp:
         if not self.pil_image or not self.controller:
             return
             
-        try:
-            # Get click coordinates on canvas
-            canvas_x = self.image_canvas.canvasx(event.x)
-            canvas_y = self.image_canvas.canvasy(event.y)
+        # Get click coordinates on canvas
+        canvas_x = self.image_canvas.canvasx(event.x)
+        canvas_y = self.image_canvas.canvasy(event.y)
             
-            # Convert canvas coordinates to original image coordinates
-            img_w, img_h = self.pil_image.size
-            if self.zoom_mode == "stretch":
-                canvas_w = self.image_canvas.winfo_width()
-                canvas_h = self.image_canvas.winfo_height()
-                scale = min(canvas_w / img_w, canvas_h / img_h)
-            else:  # "real" mode
-                scale = self.zoom_level
+        # Convert canvas coordinates to original image coordinates
+        img_w, img_h = self.pil_image.size
+        if self.zoom_mode == "stretch":
+            canvas_w = self.image_canvas.winfo_width()
+            canvas_h = self.image_canvas.winfo_height()
+            scale = min(canvas_w / img_w, canvas_h / img_h)
+        else:  # "real" mode
+            scale = self.zoom_level
                 
-            # Calculate original image coordinates
-            orig_x = int(canvas_x / scale)
-            orig_y = int(canvas_y / scale)
+        # Calculate original image coordinates
+        orig_x = int(canvas_x / scale)
+        orig_y = int(canvas_y / scale)
             
-            # Check bounds
-            if 0 <= orig_x < img_w and 0 <= orig_y < img_h:
-                # Request pixel information from controller
-                if hasattr(self.controller, 'get_pixel_info'):
-                    info = self.controller.get_pixel_info(orig_x, orig_y)
-                    if info:
-                        self.status_var.set(info)
-                else:
-                    # Fallback: show just coordinates
-                    self.status_var.set(f"Pixel ({orig_x}, {orig_y})")
+        # Check bounds
+        if 0 <= orig_x < img_w and 0 <= orig_y < img_h:
+            # Request pixel information from controller
+            if hasattr(self.controller, 'get_pixel_info'):
+                info = self.controller.get_pixel_info(orig_x, orig_y)
+                if info:
+                    self.status_var.set(info)
+            else:
+                # Fallback: show just coordinates
+                self.status_var.set(f"Pixel ({orig_x}, {orig_y})")
                     
-        except Exception as e:
-            print(f"Error handling image click: {e}")
 
     def _save_current_image(self):
         """Save the currently displayed image to file"""
-        print("🔧 DEBUG: _save_current_image called")
-        
+
         if not self.pil_image:
             messagebox.showwarning("Save Image", "No image is currently displayed.")
             return
@@ -947,8 +964,7 @@ class HoloTrackerApp:
             display_type = self.display_combobox.get() if hasattr(self, 'display_combobox') else "image"
             # Clean display type for filename (remove spaces and special chars)
             clean_display_type = display_type.replace(" ", "_").replace("/", "_")
-            print(f"🔧 DEBUG: Clean display type: {clean_display_type}")
-            
+
             # Open save dialog with simplified options
             filename = filedialog.asksaveasfilename(
                 title="Save Image As",
@@ -961,9 +977,7 @@ class HoloTrackerApp:
                     ("All files", "*.*")
                 ]
             )
-            
-            print(f"🔧 DEBUG: Selected filename: {filename}")
-            
+
             # If user selected a file but wants to use display type name, suggest it
             if filename and not os.path.basename(filename).startswith(clean_display_type):
                 # User can still change the name in the dialog
@@ -972,21 +986,18 @@ class HoloTrackerApp:
             if filename:
                 # Save the image
                 self.pil_image.save(filename)
-                print(f"🔧 DEBUG: Image saved successfully")
+
                 messagebox.showinfo("Save Image", f"Image saved successfully to:\n{filename}")
-            else:
-                print("🔧 DEBUG: Save dialog cancelled")
-                
+
         except Exception as e:
-            print(f"🔧 DEBUG: Error in save: {e}")
+
             messagebox.showerror("Save Image", f"Error saving image:\n{str(e)}")
 
     def _on_image_right_click(self, event):
         """Handle right click on image - show context menu"""
-        print("🔧 DEBUG: Right click detected")
-        
+
         if not self.pil_image:
-            print("🔧 DEBUG: No image available")
+
             return
             
         try:
@@ -995,17 +1006,16 @@ class HoloTrackerApp:
             
             # Check if we're in TEST_MODE (required for both options)
             in_test_mode = self._is_in_test_mode()
-            print(f"🔧 DEBUG: In test mode: {in_test_mode}")
-            
+
             # Add Save Image option (available in TEST_MODE on all display types)
             if in_test_mode:
-                print("🔧 DEBUG: Adding enabled Save Image option")
+
                 context_menu.add_command(
                     label="Save Image",
                     command=self._save_current_image
                 )
             else:
-                print("🔧 DEBUG: Adding disabled Save Image option")
+
                 context_menu.add_command(
                     label="Save Image (TEST mode required)",
                     state="disabled"
@@ -1016,10 +1026,9 @@ class HoloTrackerApp:
             
             # Add Focus Analysis option (only in TEST_MODE with non-FFT XY images)
             focus_available = self._is_focus_analysis_available()
-            print(f"🔧 DEBUG: Focus available: {focus_available}")
-            
+
             if focus_available:
-                print("🔧 DEBUG: Adding enabled Focus Analysis option")
+
                 context_menu.add_command(
                     label="Focus Analysis",
                     command=lambda: self._perform_focus_analysis_at_click(event)
@@ -1033,12 +1042,11 @@ class HoloTrackerApp:
                 )
             
             # Show context menu at click position
-            print(f"🔧 DEBUG: Showing context menu at ({event.x_root}, {event.y_root})")
+
             context_menu.tk_popup(event.x_root, event.y_root)
             
         except Exception as e:
-            print(f"🔧 DEBUG: Error showing context menu: {e}")
-            # Note: Let the menu destroy itself naturally when user clicks elsewhere
+            pass
 
     def _is_in_test_mode(self):
         """Check if we're currently in TEST mode"""
@@ -1094,43 +1102,37 @@ class HoloTrackerApp:
 
     def _perform_focus_analysis_at_click(self, event):
         """Perform focus analysis at the clicked position"""
-        print("🔧 DEBUG: _perform_focus_analysis_at_click called")
-        
+
         try:
             # Get click coordinates on canvas
             canvas_x = self.image_canvas.canvasx(event.x)
             canvas_y = self.image_canvas.canvasy(event.y)
-            print(f"🔧 DEBUG: Canvas coordinates: ({canvas_x}, {canvas_y})")
-            
+
             # Convert canvas coordinates to original image coordinates
             img_w, img_h = self.pil_image.size
-            print(f"🔧 DEBUG: Image size: {img_w}x{img_h}")
-            
+
             if self.zoom_mode == "stretch":
                 canvas_w = self.image_canvas.winfo_width()
                 canvas_h = self.image_canvas.winfo_height()
                 scale = min(canvas_w / img_w, canvas_h / img_h)
             else:  # "real" mode
                 scale = self.zoom_level
-                
-            print(f"🔧 DEBUG: Scale: {scale}, Zoom mode: {self.zoom_mode}")
-                
+
             # Calculate original image coordinates
             orig_x = int(canvas_x / scale)
             orig_y = int(canvas_y / scale)
-            print(f"🔧 DEBUG: Original coordinates: ({orig_x}, {orig_y})")
-            
+
             # Check bounds
             if 0 <= orig_x < img_w and 0 <= orig_y < img_h:
-                print("🔧 DEBUG: Opening focus analysis dialog...")
+
                 # Open focus analysis dialog
                 self._open_focus_analysis_dialog(orig_x, orig_y)
             else:
-                print(f"🔧 DEBUG: Coordinates out of bounds: ({orig_x}, {orig_y}) vs ({img_w}, {img_h})")
+
                 messagebox.showwarning("Focus Analysis", "Click position is outside image bounds.")
                     
         except Exception as e:
-            print(f"🔧 DEBUG: Error in focus analysis: {e}")
+
             messagebox.showerror("Focus Analysis", f"Error performing focus analysis:\n{str(e)}")
 
     def init_localisations_tab(self):
@@ -1150,7 +1152,7 @@ class HoloTrackerApp:
 
     def display_results(self, results):
         """Update the 3D plot in the Localisation tab"""
-        # print(f"🖼️  UI: display_results called with keys: {list(results.keys()) if results else 'None'}")
+        # print(f"  UI: display_results called with keys: {list(results.keys()) if results else 'None'}")
         self.ax.clear()
         
         if "localizations" in results and results["localizations"]:
@@ -1171,8 +1173,7 @@ class HoloTrackerApp:
                         self.colorbar = None  # Reset to None first
                         self.colorbar = self.fig.colorbar(scatter, ax=self.ax, label='Particle Size (pixels)', shrink=0.8)
                 except Exception as e:
-                    # print(f"⚠️  UI: Error managing colorbar: {e}")
-                    # Continue without colorbar if there's an error
+
                     pass
             else:
                 self.ax.scatter(x, y, z, c='red', marker='o', s=50)
@@ -1187,7 +1188,7 @@ class HoloTrackerApp:
                     self.colorbar.remove()
                     self.colorbar = None
             except Exception as e:
-                # print(f"⚠️  UI: Error removing colorbar: {e}")
+
                 self.colorbar = None
             
         self.ax.set_xlabel('X Position (µm)')
@@ -1199,9 +1200,9 @@ class HoloTrackerApp:
         if not (hasattr(self, 'controller') and self.controller and self.controller.state == "BATCH_MODE"):
             # print("📞 UI: About to call update_timing_display (not in BATCH mode)")
             self.update_timing_display(results)
-            # print("✅ UI: update_timing_display completed")
+
         else:
-            # print("🔄 UI: Skipping update_timing_display (BATCH mode - controller handles it)")
+            # print(" UI: Skipping update_timing_display (BATCH mode - controller handles it)")
             pass
         
         # Update Info tab table
@@ -1216,12 +1217,10 @@ class HoloTrackerApp:
         # print(f"🕐 UI: update_timing_display called with keys: {list(results.keys()) if results else 'None'}")
         
         if hasattr(self, 'timing_label'):
-            # print("✅ UI: timing_label exists")
+
             if 'processing_times' in results and results['processing_times']:
                 times = results['processing_times']
-                # print(f"⏱️  UI: Processing times found: {times}")
-                # print(f"🔍 UI: Keys in times: {list(times.keys())}")
-                # print(f"🔍 UI: Does 'iteration_time' exist? {'iteration_time' in times}")
+
                 timing_text = ""
                 
                 def format_time(t):
@@ -1251,20 +1250,17 @@ class HoloTrackerApp:
                 if 'iteration_time' in times:
                     iteration_ms = times['iteration_time'] * 1000
                     timing_text += f"\nIteration time: {iteration_ms:.1f}ms"
-                    # print(f"✅ UI: Added iteration time to display: {iteration_ms:.1f}ms")
-                
-                # print(f"📝 UI: Generated timing text: {timing_text[:50]}...")
+
                 
                 # Update with normal color
-                # print("🖼️  UI: Updating timing_label...")
+
                 self.timing_label.config(text=timing_text, foreground="white", background="red")
-                # print("✅ UI: timing_label updated successfully")
+
             else:
-                # print("❌ UI: No processing_times in results or processing_times is empty")
-                # Aucun temps disponible
+
                 self.timing_label.config(text="Aucun traitement effectué", foreground="gray")
         else:
-            # print("❌ UI: timing_label does not exist!")
+
             pass
 
     def update_3d_plot(self, core_results):
@@ -1361,8 +1357,13 @@ class HoloTrackerApp:
             self.summary_label.config(text="No objects detected")
 
     def load_parameters(self):
-        if os.path.exists("last_param.json"):
-            with open("last_param.json", "r") as f:
+        # Always save/load last_param.json in the project root (parent of 'code' folder)
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # /path/to/code
+        project_root = os.path.dirname(script_dir)  # /path/to/project
+        param_file = os.path.join(project_root, "last_param.json")
+        
+        if os.path.exists(param_file):
+            with open(param_file, "r") as f:
                 self.parameters = json.load(f)
                 self.update_ui_from_parameters()
         else:
@@ -1370,8 +1371,13 @@ class HoloTrackerApp:
         self.update_hologram_list()
     
     def save_parameters(self):
+        # Always save/load last_param.json in the project root (parent of 'code' folder)
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # /path/to/code
+        project_root = os.path.dirname(script_dir)  # /path/to/project
+        param_file = os.path.join(project_root, "last_param.json")
+        
         self.update_parameters_from_ui()
-        with open("last_param.json", "w") as f:
+        with open(param_file, "w") as f:
             json.dump(self.parameters, f, indent=4)
 
     def update_parameters_from_ui(self):
@@ -1474,6 +1480,189 @@ class HoloTrackerApp:
         if hasattr(self, 'plane_number_spinbox'):
             self.update_plane_number_range()
 
+    def show_help(self):
+        """Display comprehensive help dialog with step-by-step procedure"""
+        help_window = tk.Toplevel(self.root)
+        help_window.title("HoloTracker - User Guide")
+        help_window.geometry("900x700")
+        help_window.transient(self.root)
+        help_window.grab_set()
+        
+        # Center the window
+        help_window.update_idletasks()
+        x = (help_window.winfo_screenwidth() // 2) - (900 // 2)
+        y = (help_window.winfo_screenheight() // 2) - (700 // 2)
+        help_window.geometry(f"900x700+{x}+{y}")
+        
+        # Create scrollable text widget
+        text_frame = ttk.Frame(help_window)
+        text_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        text_widget = tk.Text(text_frame, wrap="word", font=("Arial", 11), padx=10, pady=10)
+        scrollbar = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
+        text_widget.configure(yscrollcommand=scrollbar.set)
+        
+        text_widget.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Help content
+        help_text = """HoloTracker - Digital Holographic Particle Tracking User Guide
+
+OVERVIEW:
+HoloTracker is a scientific application for analyzing digital holograms to track particles in 3D space. It provides both single hologram analysis and batch processing capabilities.
+
+STEP-BY-STEP PROCEDURE:
+
+1. SELECT HOLOGRAM DIRECTORY:
+   • Click "Browse" to select the directory containing your hologram images
+   • Images should be ordered alphabetically (e.g., image001.bmp, image002.bmp, ...)
+   • Supported formats: BMP, TIFF, PNG, JPG
+   • Ensure all images have the same dimensions and are properly formatted
+
+2. SELECT MEAN HOLOGRAM (Optional but Recommended):
+   • Click "Browse" next to "Mean Hologram" to select a 32-bit TIFF reference hologram
+   • This hologram is subtracted from each processed hologram to remove background noise
+   • You can compute this hologram using the "Compute Mean Hologram" button below
+   • Choose between Arithmetic Mean (standard) or Logarithmic Mean (for better dynamic range)
+
+2 bis. COMPUTE MEAN HOLOGRAM:
+   • Click "Compute Mean Hologram" to generate a reference hologram from your image sequence
+   • Arithmetic Mean: Simple average of all pixel intensities
+   • Logarithmic Mean: Uses logarithmic averaging for better handling of bright spots
+   • The computed mean will be automatically saved as a 32-bit TIFF file
+   • A "mean" folder will be created inside the hologram directory to store the result
+   • The mean hologram path will be automatically refreshed and updated in the interface
+
+3. CONFIGURE PROCESSING PARAMETERS:
+   
+   PROPAGATION PARAMETERS:
+   • Lambda (wavelength): Laser wavelength in meters (e.g., 532e-9 for Nd:YAG green laser)
+   • Pixel Size: Physical size of one camera pixel in meters
+   • Distance ini: Initial reconstruction distance in meters (e.g., 10e-6 for 10µm)
+   • Number of planes: Number of depth planes to reconstruct (e.g., 200 planes)
+   • Step: Distance between consecutive planes in meters (e.g., 0.5e-6 for 0.5µm step)
+   • Example: distance ini = 10e-6, 200 planes, step = 0.5e-6 will reconstruct 200 planes from 10µm to 110µm
+   
+   PARTICLE DETECTION:
+   • Threshold: Number of standard deviations to compute detection threshold 
+     (threshold = mean + N × std_var computed on focus volume)
+     (e.g., if threshold = 10 → threshold = mean + 10 × std_var)
+   • Min/Max Diameter: Filter sparse segmented voxels or oversized objects in pixels
+     (removes noise and debris stuck on optics - generally dirt or optical artifacts)
+   
+   FOCUS ANALYSIS:
+   • Choose focus metric from 8 available methods:
+     - SUM_OF_INTENSITY: Simple sum of pixel intensities (basic, fast)
+     - SUM_OF_LAPLACIAN: Edge detection using Laplacian operator (good for sharp edges)
+     - SUM_OF_VARIANCE: Statistical variance-based metric (robust to noise)
+     - TENEGRAD: Gradient-based focus (recommended for most applications)
+     - SUM_OF_GRADIENT: Sum of Sobel gradient magnitudes (edge-sensitive)
+     - MEAN_ALL: Arithmetic mean of 5 methods (SUM_OF_INTENSITY, SUM_OF_LAPLACIAN, SUM_OF_VARIANCE, TENEGRAD, SUM_OF_GRADIENT)
+     - MEAN_LOG_ALL: Geometric mean via logarithms of the same 5 methods (balanced combination)
+   • TENEGRAD and MEAN_LOG_ALL are recommended for most applications
+   • Higher threshold values = stricter particle detection
+   • Lower threshold values = more sensitive detection
+
+4. TEST MODE:
+   • Click "ENTER TEST MODE" to analyze a single hologram
+   • Select specific hologram from dropdown menu
+   • Right-click on reconstructed images to:
+     - Save current XY image as PNG/TIFF
+     - Perform focus analysis at clicked position
+   • View results in real-time without processing entire sequence
+   • Click "EXIT TEST MODE" when finished
+
+5. BATCH PROCESSING:
+   • After testing parameters, click "START BATCH" to process all holograms
+   • Monitor progress in the status bar
+   • Results are saved as CSV files with particle positions and focus values
+   • Enable "Display Batch Results" to show real-time processing images
+   • Click "STOP BATCH" to interrupt processing if needed
+
+6. RESULTS ANALYSIS:
+   • CSV files contain: HOLOGRAM NUMBER, OBJECT NUMBER, X POSITION (m), Y POSITION (m), Z POSITION (m), NUMBER OF VOXEL
+   • Use external software (Excel, Python, MATLAB) to analyze particle trajectories
+   • Focus values indicate detection confidence (higher = better focused)
+   • Object visualization: Double-click on any detected object in the Info tab to view 3D thumbnails
+   • Generate XY, XZ, and YZ slice views of individual particles with adjustable voxel size parameters
+   • Slice views help validate particle detection and analyze object morphology
+
+INTERFACE TABS:
+
+HOLOGRAM TAB:
+• Display reconstruction results and volume projections
+• Right-click on images for save/focus analysis options (TEST mode only)
+• Zoom controls and navigation tools for detailed inspection
+
+LOCALIZATIONS TAB:
+• 3D scatter plot of all detected particles with interactive visualization
+• Color-coded by particle size (number of voxels)
+• Navigation toolbar for 3D plot manipulation (rotation, zoom, pan)
+
+INFO TAB:
+• Detailed table of all detected objects with precise coordinates
+• Shows Object#, Position X/Y/Z (µm), and voxel count for each particle
+• Double-click any object row to open 3D slice viewer with customizable parameters
+• Slice viewer displays XY, XZ, and YZ cross-sections of selected particles
+
+OPERATING MODES:
+
+WAIT MODE (Default):
+• Configure parameters and directories
+• Start test mode or batch processing
+• All configuration controls are enabled
+
+TEST MODE:
+• Single hologram analysis for parameter optimization
+• Right-click functionality on images
+• Real-time parameter adjustment
+• Only "EXIT TEST MODE" button is active
+
+BATCH MODE:
+• Automated processing of entire hologram sequence
+• Progress monitoring and results saving
+• Only "STOP BATCH" button is active
+• All other controls are disabled during processing
+
+PARAMETER GUIDELINES:
+
+• Start with TEST MODE to optimize parameters on a representative hologram
+• Adjust threshold until you detect expected number of particles
+• Z range should cover your experimental volume
+• Higher Z number improves accuracy but increases computation time
+• Focus metric choice depends on particle characteristics:
+  - TENEGRAD: Best general-purpose gradient-based metric (recommended)
+  - SUM_OF_GRADIENT: Alternative gradient method using Sobel filters
+  - SUM_OF_LAPLACIAN: Good for detecting sharp edges and boundaries
+  - SUM_OF_VARIANCE: Robust to noise, good for uniform particles
+  - SUM_OF_INTENSITY: Simple and fast, suitable for high-contrast particles
+  - MEAN_ALL: Balanced approach using arithmetic mean of 5 methods
+  - MEAN_LOG_ALL: Geometric mean combination, robust and recommended for complex samples
+
+TROUBLESHOOTING:
+
+• No particles detected: Lower threshold, check mean hologram subtraction
+• Too many false detections: Raise threshold, adjust diameter limits
+• Poor focus quality: Try different focus metrics, check Z range
+• Slow processing: Reduce Z number, optimize particle diameter range
+• Memory issues: Process smaller batches, reduce image resolution
+
+For technical support or advanced configuration, contact the development team (simon.becker@univ-lorraine.fr or simbecker@gmail.com).
+
+CITATION:
+If this software has been useful for your research, please cite HoloTracker in your publications. This helps support continued development and allows other researchers to discover this tool."""
+        
+        text_widget.insert("1.0", help_text)
+        text_widget.config(state="disabled")  # Make read-only
+        
+        # Close button
+        close_frame = ttk.Frame(help_window)
+        close_frame.pack(pady=10)
+        ttk.Button(close_frame, text="Close", command=help_window.destroy).pack()
+        
+        # Focus on the window
+        help_window.focus_set()
+
     def on_closing(self):
         # Only allow closing if Exit button is enabled
         if str(self.exit_button['state']) == "disabled":
@@ -1504,7 +1693,7 @@ class HoloTrackerApp:
             self.hologram_combobox.set("")
 
     def on_hologram_selected(self, event=None):
-        # print(f"🎯 UI: on_hologram_selected called")
+
         directory = self.dir_text.get("1.0", tk.END).strip()
         filename = self.hologram_combobox.get()
         if self.controller:
@@ -1543,7 +1732,7 @@ class HoloTrackerApp:
         pos_z = float(values[3])
         nb_voxel = values[4]
         
-        # print(f"🔍 Object #{object_num} clicked: ({pos_x:.3f}, {pos_y:.3f}, {pos_z:.3f}) - {nb_voxel} voxels")
+        # print(f" Object #{object_num} clicked: ({pos_x:.3f}, {pos_y:.3f}, {pos_z:.3f}) - {nb_voxel} voxels")
         
         # Calculate pixel coordinates to display
         pixel_coords = self.calculate_pixel_coordinates(pos_x, pos_y, pos_z)
@@ -1579,12 +1768,12 @@ class HoloTrackerApp:
             else:
                 pos_z_pix = 0
             
-            # print(f"🔍 UI: Pixel conversion - ({pos_x_um:.1f}, {pos_y_um:.1f}, {pos_z_um:.1f}) µm → ({pos_x_pix}, {pos_y_pix}, {pos_z_pix}) pix")
+            # print(f" UI: Pixel conversion - ({pos_x_um:.1f}, {pos_y_um:.1f}, {pos_z_um:.1f}) µm → ({pos_x_pix}, {pos_y_pix}, {pos_z_pix}) pix")
             
             return (pos_x_pix, pos_y_pix, pos_z_pix)
             
         except Exception as e:
-            print(f"⚠️  UI: Error calculating pixel coordinates: {e}")
+
             return None
 
     def show_object_viewer_dialog(self, object_num, pos_x, pos_y, pos_z, pixel_coords=None):
@@ -1675,9 +1864,10 @@ class HoloTrackerApp:
             except ValueError as e:
                 tk.messagebox.showerror("Invalid Input", "Please enter valid positive integers")
             except tk.TclError as e:
-                print(f"⚠️  UI: Dialog widget error (probably dialog closed): {e}")
+                pass
+
             except Exception as e:
-                print(f"❌ UI: Unexpected error in on_generate_slices: {e}")
+
                 tk.messagebox.showerror("Error", f"Unexpected error: {e}")
         
         def on_exit():
@@ -1702,9 +1892,7 @@ class HoloTrackerApp:
     def display_object_slices(self, object_num, slices_data):
         """Display the 3 slice views in a new window"""
         try:
-            print(f"🖼️  UI: Displaying slices for object #{object_num}")
-            print(f"🖼️  UI: Slices data keys: {list(slices_data.keys())}")
-            
+
             viewer_window = tk.Toplevel(self.root)
             viewer_window.title(f"Object #{object_num} - 3D Slice Views")
             viewer_window.geometry("1000x400")
@@ -1718,7 +1906,7 @@ class HoloTrackerApp:
             
             for i, (name, key) in enumerate(zip(slice_names, slice_keys)):
                 if key not in slices_data:
-                    print(f"⚠️  UI: Missing slice data for {key}")
+
                     continue
                     
                 # Create frame for this slice
@@ -1731,8 +1919,7 @@ class HoloTrackerApp:
                 
                 # Get slice data
                 slice_array = slices_data[key]
-                print(f"🖼️  UI: {name} shape: {slice_array.shape}")
-                
+
                 # Ensure we have valid data
                 if slice_array.size == 0:
                     ttk.Label(slice_frame, text="No data").pack(padx=5, pady=5)
@@ -1764,11 +1951,9 @@ class HoloTrackerApp:
                 # Add size info
                 info_label = ttk.Label(slice_frame, text=f"Size: {slice_array.shape[1]}×{slice_array.shape[0]}")
                 info_label.pack()
-            
-            print(f"✅ UI: Object slices window created successfully")
-            
+
         except Exception as e:
-            print(f"❌ UI: Error displaying object slices: {e}")
+
             import traceback
             traceback.print_exc()
             tk.messagebox.showerror("Error", f"Error displaying slices: {e}")
@@ -1776,9 +1961,7 @@ class HoloTrackerApp:
     def display_object_slices_in_dialog(self, object_num, slices_data, dialog):
         """Display the 3 slice views directly in the existing dialog"""
         try:
-            print(f"🖼️  UI: Displaying slices in dialog for object #{object_num}")
-            print(f"🖼️  UI: Slices data keys: {list(slices_data.keys())}")
-            
+
             # Clear the status label and any existing content
             for widget in self.image_display_frame.winfo_children():
                 widget.destroy()
@@ -1792,7 +1975,7 @@ class HoloTrackerApp:
             
             for i, (name, key) in enumerate(zip(slice_names, slice_keys)):
                 if key not in slices_data:
-                    print(f"⚠️  UI: Missing slice data for {key}")
+
                     continue
                     
                 # Create frame for this slice
@@ -1805,10 +1988,7 @@ class HoloTrackerApp:
                 
                 # Get slice data
                 slice_array = slices_data[key]
-                print(f"🖼️  UI: {name} shape: {slice_array.shape}")
-                print(f"🔍 UI: {name} data range: {slice_array.min():.6f} to {slice_array.max():.6f}")
-                print(f"🔍 UI: {name} data type: {slice_array.dtype}")
-                
+
                 # Ensure we have valid data
                 if slice_array.size == 0:
                     ttk.Label(slice_frame, text="No data").pack(padx=5, pady=5)
@@ -1818,8 +1998,7 @@ class HoloTrackerApp:
                 # Handle complex data if present
                 if np.iscomplexobj(slice_array):
                     slice_array = np.abs(slice_array)
-                    print(f"🔍 UI: {name} converted from complex to magnitude")
-                
+
                 # More robust normalization
                 array_min = float(slice_array.min())
                 array_max = float(slice_array.max())
@@ -1830,7 +2009,7 @@ class HoloTrackerApp:
                 elif array_max == array_min and array_max != 0:
                     # Constant non-zero value - make it visible
                     slice_normalized = np.full_like(slice_array, 128, dtype=np.uint8)
-                    print(f"🔍 UI: {name} constant value {array_max}, set to mid-gray")
+
                 else:
                     # All zeros - create a test pattern for visibility
                     slice_normalized = np.zeros_like(slice_array, dtype=np.uint8)
@@ -1840,10 +2019,7 @@ class HoloTrackerApp:
                         slice_normalized[-1, :] = 255  # Bottom border
                         slice_normalized[:, 0] = 255  # Left border
                         slice_normalized[:, -1] = 255  # Right border
-                    print(f"🔍 UI: {name} all zeros, added border for visibility")
-                
-                print(f"🔍 UI: {name} normalized range: {slice_normalized.min()} to {slice_normalized.max()}")
-                
+
                 # Create PIL Image
                 pil_image = Image.fromarray(slice_normalized, mode='L')
                 
@@ -1854,9 +2030,7 @@ class HoloTrackerApp:
                 new_width = int(pil_image.width * scale_factor)
                 new_height = int(pil_image.height * scale_factor)
                 pil_image = pil_image.resize((new_width, new_height), Image.NEAREST)
-                
-                print(f"🔍 UI: {name} scaled to {new_width}x{new_height} (factor: {scale_factor:.2f})")
-                
+
                 # Convert to PhotoImage
                 photo = ImageTk.PhotoImage(pil_image)
                 
@@ -1869,11 +2043,9 @@ class HoloTrackerApp:
                 info_label = ttk.Label(slice_frame, text=f"{slice_array.shape[1]}×{slice_array.shape[0]}", 
                                      font=('TkDefaultFont', 8))
                 info_label.pack()
-            
-            print(f"✅ UI: Object slices displayed in dialog successfully")
-            
+
         except Exception as e:
-            print(f"❌ UI: Error displaying object slices in dialog: {e}")
+
             import traceback
             traceback.print_exc()
             
@@ -1884,7 +2056,7 @@ class HoloTrackerApp:
                                       foreground="red")
                 error_label.pack(pady=10)
             except:
-                print(f"⚠️  UI: Could not display error in dialog (dialog may be closed)")
+                pass
 
     def _open_focus_analysis_dialog(self, x_pos, y_pos):
         """Opens a dialog to configure and launch focus function analysis
@@ -1945,7 +2117,7 @@ class HoloTrackerApp:
                 ttk.Label(comp_frame, text="Type:").grid(row=0, column=1, sticky=tk.W, padx=(10, 5))
                 focus_type_var = tk.StringVar(value="TENEGRAD")
                 focus_type_combo = ttk.Combobox(comp_frame, textvariable=focus_type_var, 
-                                              values=["SUM_OF_INTENSITY", "SUM_OF_LAPLACIAN", "SUM_OF_VARIANCE", "TENEGRAD"],
+                                              values=["SUM_OF_INTENSITY", "SUM_OF_LAPLACIAN", "SUM_OF_VARIANCE", "TENEGRAD", "SUM_OF_GRADIENT", "MEAN_ALL", "MEAN_LOG_ALL"],
                                               state="readonly", width=15)
                 focus_type_combo.grid(row=0, column=2, padx=5)
                 
@@ -2073,7 +2245,6 @@ class HoloTrackerApp:
                     
             except Exception as e:
                 status_label.config(text=f"Error: {str(e)}")
-                print(f"Error during focus analysis: {e}")
         
         ttk.Button(buttons_frame, text="Run Analysis", command=run_analysis).pack(side=tk.LEFT, padx=5)
         ttk.Button(buttons_frame, text="Close", command=dialog.destroy).pack(side=tk.LEFT, padx=5)

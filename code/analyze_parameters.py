@@ -133,10 +133,14 @@ def analyze_parameters():
     }
     
     try:
-        with open('last_param.json', 'r') as f:
-            params = json.load(f)
+        # Load last_param.json from project root (parent of 'code' folder)
+        script_dir = os.path.dirname(os.path.abspath(__file__))  # /path/to/code
+        project_root = os.path.dirname(script_dir)  # /path/to/project
+        param_file = os.path.join(project_root, "last_param.json")
         
-        print("🔍 ANALYSE DÉTAILLÉE DES PARAMÈTRES")
+        with open(param_file, 'r') as f:
+            params = json.load(f)
+
         print("=" * 50)
         
         errors = []
@@ -145,10 +149,8 @@ def analyze_parameters():
         for param_name, analysis in parameter_analysis.items():
             if param_name in params:
                 value = params[param_name]
-                print(f"\n📋 {param_name}:")
-                print(f"   📝 Description: {analysis['description']}")
-                print(f"   💾 Valeur: {value}")
-                print(f"   🏷️  Type: {type(value).__name__}")
+
+                print(f"   🏷  Type: {type(value).__name__}")
                 
                 # Vérification du type
                 expected_types = analysis['type'] if isinstance(analysis['type'], list) else [analysis['type']]
@@ -167,27 +169,26 @@ def analyze_parameters():
                             converted_value = bool(value)
                         else:
                             converted_value = value
-                        
-                        print(f"   🔄 Conversion: {value} -> {converted_value}")
+
                         value = converted_value
                         type_ok = True
                     except Exception as e:
-                        errors.append(f"❌ {param_name}: Erreur de type/conversion: {e}")
-                        print(f"   ❌ Type invalide: attendu {expected_types}, trouvé {type(value)}")
+                        errors.append(f" {param_name}: Erreur de type/conversion: {e}")
+                        print(f"    Type invalide: attendu {expected_types}, trouvé {type(value)}")
                         continue
                 
                 # Vérification des contraintes
                 try:
                     if analysis['check'](value):
-                        print(f"   ✅ Valide")
+                        pass
                     else:
-                        warnings.append(f"⚠️  {param_name}: Valeur hors limites: {value}")
-                        print(f"   ⚠️  Valeur possiblement hors limites")
+                        warnings.append(f"  {param_name}: Valeur hors limites: {value}")
+
                 except Exception as e:
-                    warnings.append(f"⚠️  {param_name}: Erreur de validation: {e}")
-                    print(f"   ⚠️  Erreur de validation: {e}")
+                    warnings.append(f"  {param_name}: Erreur de validation: {e}")
+
             else:
-                errors.append(f"❌ {param_name}: MANQUANT")
+                errors.append(f" {param_name}: MANQUANT")
         
         # Calcul medium_wavelength
         print(f"\n🧮 CALCULS DÉRIVÉS")
@@ -199,7 +200,7 @@ def analyze_parameters():
             print(f"medium_wavelength = {wavelength} / {medium_optical_index} = {medium_wavelength:.6e} m")
             print(f"                  = {medium_wavelength * 1e9:.1f} nm")
         except Exception as e:
-            errors.append(f"❌ Calcul medium_wavelength impossible: {e}")
+            errors.append(f" Calcul medium_wavelength impossible: {e}")
         
         # Vérification des chemins
         print(f"\n📁 VÉRIFICATION DES CHEMINS")
@@ -208,51 +209,46 @@ def analyze_parameters():
         if params.get('mean_hologram_image_path'):
             path = params['mean_hologram_image_path']
             if os.path.exists(path):
-                print(f"✅ Hologramme moyen trouvé: {path}")
+                pass
             else:
-                warnings.append(f"⚠️  Hologramme moyen introuvable: {path}")
-                print(f"⚠️  Hologramme moyen introuvable: {path}")
-        
+                warnings.append(f"  Hologramme moyen introuvable: {path}")
+
         if params.get('holograms_directory'):
             path = params['holograms_directory']
             if os.path.exists(path):
                 files = [f for f in os.listdir(path) if f.lower().endswith(params.get('image_type', 'bmp').lower())]
-                print(f"✅ Répertoire trouvé: {path}")
-                print(f"   📊 {len(files)} fichiers {params.get('image_type', 'bmp').upper()}")
+
+                print(f"    {len(files)} fichiers {params.get('image_type', 'bmp').upper()}")
             else:
-                warnings.append(f"⚠️  Répertoire introuvable: {path}")
-                print(f"⚠️  Répertoire introuvable: {path}")
-        
-        # Résumé
-        print(f"\n📈 RÉSUMÉ")
+                warnings.append(f"  Répertoire introuvable: {path}")
+
         print("=" * 10)
-        print(f"✅ Paramètres OK: {24 - len(errors)}/24")
-        print(f"❌ Erreurs: {len(errors)}")
-        print(f"⚠️  Avertissements: {len(warnings)}")
+        print(f" Paramètres OK: {24 - len(errors)}/24")
+        print(f" Erreurs: {len(errors)}")
+        print(f"  Avertissements: {len(warnings)}")
         
         if errors:
-            print(f"\n❌ ERREURS:")
+
             for error in errors:
                 print(f"   {error}")
         
         if warnings:
-            print(f"\n⚠️  AVERTISSEMENTS:")
+
             for warning in warnings:
                 print(f"   {warning}")
         
         if not errors and not warnings:
-            print(f"\n🎉 Configuration parfaite!")
-        
+            pass
         return len(errors) == 0
         
     except FileNotFoundError:
-        print("❌ Fichier last_param.json non trouvé")
+
         return False
     except json.JSONDecodeError as e:
-        print(f"❌ Erreur de format JSON: {e}")
+
         return False
     except Exception as e:
-        print(f"❌ Erreur: {e}")
+
         return False
 
 if __name__ == "__main__":

@@ -51,7 +51,10 @@ import trackpy.diag as dg
 
 # Parameters
 display_images = False
-path = r'C:\TRAVAIL\RepositoriesGithub\HoloTracker\Images_test'
+# Use relative path to Film REF directory (parent folder from code/)
+script_dir = os.path.dirname(os.path.abspath(__file__))  # /path/to/code
+project_root = os.path.dirname(script_dir)  # /path/to/project
+path = os.path.join(project_root, 'Film REF')
 result_filename = 'result_python_sum15_TENEGRAD_STD15_each_wo_alloc.csv'
 type_image = 'bmp'
 

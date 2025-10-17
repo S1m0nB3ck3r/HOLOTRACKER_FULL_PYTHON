@@ -42,7 +42,7 @@ def stat_plane(data, label=""):
         data_std = float(cp.std(data_abs))
         
         # Print statistics
-        print(f"📊 STAT {label}{complex_info}: sum={data_sum:.3f}, min={data_min:.3f}, max={data_max:.3f}, mean={data_mean:.3f}, std={data_std:.3f}")
+        print(f" STAT {label}{complex_info}: sum={data_sum:.3f}, min={data_min:.3f}, max={data_max:.3f}, mean={data_mean:.3f}, std={data_std:.3f}")
         
         return {
             'sum': data_sum,
@@ -53,7 +53,7 @@ def stat_plane(data, label=""):
         }
     except Exception as e:
         # Error computing statistics
-        print(f"❌ STAT {label}: Error computing statistics: {e}")
+
         return None
 
 class HoloTrackerCore:
@@ -177,24 +177,30 @@ class HoloTrackerCore:
             print(f"{attr}: {value}")
         print("==============================")
 
-    def get_display_image(self, directory, filename, display_type, plane_number=0, additional_display="None"):
+    def _to_uint8(self, arr, use_log=False, display_type=""):
+        """Normalize array to uint8 for display (0-255 range)"""
+        arr = np.array(arr)  # ensure numpy
+        if np.iscomplexobj(arr):
+            arr = np.abs(arr)
+        arr = arr.astype(np.float64)
+        
+        # Apply logarithm if requested (except for FFT displays which already use log)
+        if use_log and "FFT" not in display_type:
+            arr = np.log(arr + 1e-10)
+        
+        mx = arr.max() if arr.size else 0.0
+        mn = arr.min() if arr.size else 0.0
+        if mx > mn:
+            out = ((arr - mn) * 255.0 / (mx - mn)).astype(np.uint8)
+        elif mx > 0:
+            out = (arr * 255.0 / mx).astype(np.uint8)
+        else:
+            out = np.zeros_like(arr, dtype=np.uint8)
+        return out
+
+    def get_display_image(self, directory, filename, display_type, plane_number=0, additional_display="None", use_log=False):
         """Retourne l'image à afficher selon le type demandé avec marqueurs de détection"""
         try:
-            # Helper: normalize a numpy array to uint8 for display
-            def _to_uint8(arr):
-                arr = np.array(arr)  # ensure numpy
-                if np.iscomplexobj(arr):
-                    arr = np.abs(arr)
-                arr = arr.astype(np.float64)
-                mx = arr.max() if arr.size else 0.0
-                mn = arr.min() if arr.size else 0.0
-                if mx > mn:
-                    out = ((arr - mn) * 255.0 / (mx - mn)).astype(np.uint8)
-                elif mx > 0:
-                    out = (arr * 255.0 / mx).astype(np.uint8)
-                else:
-                    out = np.zeros_like(arr, dtype=np.uint8)
-                return out
 
             # Provide a safe getter for raw hologram (prefer in-memory)
             def _get_raw_array():
@@ -208,13 +214,13 @@ class HoloTrackerCore:
             def _fallback(type_name):
                 # print(f"no '{type_name}' available")
                 arr = _get_raw_array()
-                return Image.fromarray(_to_uint8(arr))
+                return Image.fromarray(self._to_uint8(arr, use_log, display_type))
 
             # RAW_HOLOGRAM: use in-memory if available
             if display_type == "RAW_HOLOGRAM":
                 arr = _get_raw_array()
                 stat_plane(arr, label="RAW_HOLOGRAM")
-                image = Image.fromarray(_to_uint8(arr))
+                image = Image.fromarray(self._to_uint8(arr, use_log, display_type))
                 return self._apply_additional_display(image, additional_display, display_type, plane_number)
 
             # CLEANED_HOLOGRAM
@@ -222,7 +228,7 @@ class HoloTrackerCore:
                 if self.memory_allocated and self.h_cleaned_holo is not None:
                     arr = self.h_cleaned_holo.copy()
                     stat_plane(arr, label="CLEANED_HOLOGRAM")
-                    image = Image.fromarray(_to_uint8(arr))
+                    image = Image.fromarray(self._to_uint8(arr, use_log, display_type))
                     return self._apply_additional_display(image, additional_display, display_type, plane_number)
                 return _fallback("CLEANED_HOLOGRAM")
 
@@ -235,7 +241,7 @@ class HoloTrackerCore:
                         if np.iscomplexobj(h_filtered):
                             h_filtered = np.abs(h_filtered)
                         stat_plane(h_filtered, label="FILTERED_HOLOGRAM")
-                        image = Image.fromarray(_to_uint8(h_filtered))
+                        image = Image.fromarray(self._to_uint8(h_filtered, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number)
                     except Exception:
                         pass
@@ -246,7 +252,7 @@ class HoloTrackerCore:
                         if np.iscomplexobj(h_filtered):
                             h_filtered = np.abs(h_filtered)
                         stat_plane(h_filtered, label="FILTERED_HOLOGRAM")
-                        image = Image.fromarray(_to_uint8(h_filtered))
+                        image = Image.fromarray(self._to_uint8(h_filtered, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number)
                     except Exception:
                         return _fallback("FILTERED_HOLOGRAM")
@@ -262,7 +268,7 @@ class HoloTrackerCore:
                         stat_plane(h_fft, label="FFT_HOLOGRAM")
                         # logarithmic scaling for FFT visualization
                         h_fft = np.log(h_fft + 1e-10)
-                        image = Image.fromarray(_to_uint8(h_fft))
+                        image = Image.fromarray(self._to_uint8(h_fft, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number)
                     except Exception:
                         return _fallback("FFT_HOLOGRAM")
@@ -277,7 +283,7 @@ class HoloTrackerCore:
                             h_fft_filtered = np.abs(h_fft_filtered)
                         stat_plane(h_fft_filtered, label="FFT_FILTERED_HOLOGRAM")
                         h_fft_filtered = np.log(h_fft_filtered + 1e-10)
-                        image = Image.fromarray(_to_uint8(h_fft_filtered))
+                        image = Image.fromarray(self._to_uint8(h_fft_filtered, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number)
                     except Exception:
                         return _fallback("FFT_FILTERED_HOLOGRAM")
@@ -292,7 +298,7 @@ class HoloTrackerCore:
                             plane = cp.asnumpy(volume_gpu[plane_number, :, :])
                             plane = np.abs(plane)
                             stat_plane(plane, label=f"VOLUME_PLANE_{plane_number}")
-                            image = Image.fromarray(_to_uint8(plane))
+                            image = Image.fromarray(self._to_uint8(plane, use_log, display_type))
                             return self._apply_additional_display(image, additional_display, display_type, plane_number)
                     except Exception:
                         pass
@@ -304,7 +310,7 @@ class HoloTrackerCore:
                         projection = cp.sum(self.d_volume_module, axis=0)
                         projection = cp.asnumpy(projection)
                         stat_plane(projection, label="XY_SUM_PROJECTION")
-                        image = Image.fromarray(_to_uint8(projection))
+                        image = Image.fromarray(self._to_uint8(projection, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number, 'XY')
                     except Exception:
                         pass
@@ -316,7 +322,7 @@ class HoloTrackerCore:
                         projection = cp.sum(self.d_volume_module, axis=1)
                         projection = cp.asnumpy(projection)
                         stat_plane(projection, label="XZ_SUM_PROJECTION")
-                        image = Image.fromarray(_to_uint8(projection))
+                        image = Image.fromarray(self._to_uint8(projection, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number, 'XZ')
                     except Exception:
                         pass
@@ -325,29 +331,24 @@ class HoloTrackerCore:
             if display_type == "YZ_SUM_PROJECTION":
                 if self.memory_allocated:
                     try:
-                        print(f"Debug: Computing YZ_SUM_PROJECTION, volume shape: {self.d_volume_module.shape}")
-                        print(f"Debug: Volume dtype: {self.d_volume_module.dtype}")
-                        print(f"Debug: Testing simple axis=2 operation...")
-                        
+
                         # Test with smaller slice first
                         test_slice = self.d_volume_module[:10, :10, :]
                         test_result = cp.sum(test_slice, axis=2)
-                        print(f"Debug: Small test successful, result shape: {test_result.shape}")
-                        
+
                         # Try CUDA operation first, fallback to CPU if it fails
                         try:
                             projection = cp.sum(self.d_volume_module, axis=2)
                             projection = cp.asnumpy(projection)
-                            print("Debug: Full CUDA operation successful")
+
                         except Exception as cuda_error:
                             print(f"CUDA error in YZ_SUM_PROJECTION, falling back to CPU: {cuda_error}")
                             # Fallback to CPU computation
                             volume_cpu = cp.asnumpy(self.d_volume_module)
                             projection = np.sum(volume_cpu, axis=2)
-                        
-                        print(f"Debug: YZ projection shape: {projection.shape}")
+
                         stat_plane(projection, label="YZ_SUM_PROJECTION")
-                        image = Image.fromarray(_to_uint8(projection))
+                        image = Image.fromarray(self._to_uint8(projection, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number, 'YZ')
                     except Exception as e:
                         print(f"Error in YZ_SUM_PROJECTION: {e}")
@@ -360,7 +361,7 @@ class HoloTrackerCore:
                         projection = cp.max(self.d_volume_module, axis=0)
                         projection = cp.asnumpy(projection)
                         stat_plane(projection, label="XY_MAX_PROJECTION")
-                        image = Image.fromarray(_to_uint8(projection))
+                        image = Image.fromarray(self._to_uint8(projection, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number, 'XY')
                     except Exception:
                         pass
@@ -372,7 +373,7 @@ class HoloTrackerCore:
                         projection = cp.max(self.d_volume_module, axis=1)
                         projection = cp.asnumpy(projection)
                         stat_plane(projection, label="XZ_MAX_PROJECTION")
-                        image = Image.fromarray(_to_uint8(projection))
+                        image = Image.fromarray(self._to_uint8(projection, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number, 'XZ')
                     except Exception:
                         pass
@@ -393,7 +394,7 @@ class HoloTrackerCore:
                             projection = np.max(volume_cpu, axis=2)
                         
                         stat_plane(projection, label="YZ_MAX_PROJECTION")
-                        image = Image.fromarray(_to_uint8(projection))
+                        image = Image.fromarray(self._to_uint8(projection, use_log, display_type))
                         return self._apply_additional_display(image, additional_display, display_type, plane_number, 'YZ')
                     except Exception as e:
                         # print(f"Error in YZ_MAX_PROJECTION: {e}")
@@ -402,14 +403,14 @@ class HoloTrackerCore:
 
             # Default: show raw hologram
             arr = _get_raw_array()
-            return Image.fromarray(_to_uint8(arr))
+            return Image.fromarray(self._to_uint8(arr, use_log, display_type))
 
         except Exception as e:
             # Minimal error reporting
             # print(f"Error in get_display_image: {e}")
             try:
                 arr = self.h_raw_holo if self.h_raw_holo is not None else np.zeros((100,100), dtype=np.float64)
-                return Image.fromarray(_to_uint8(arr))
+                return Image.fromarray(self._to_uint8(arr, use_log, display_type))
             except:
                 return Image.fromarray(np.zeros((100, 100), dtype=np.uint8))
 
@@ -452,9 +453,7 @@ class HoloTrackerCore:
             
         total_images = len(image_files)
         mean_image = None
-        
-        print(f"🧮 Core: Computing {mean_type} mean of {total_images} images")
-        
+
         for i, filename in enumerate(image_files):
             filepath = os.path.join(directory, filename)
             try:
@@ -483,9 +482,7 @@ class HoloTrackerCore:
         # For logarithmic mean, take exponential to get back to linear space
         if mean_type == "logarithmic":
             mean_image = np.exp(mean_image)
-            print("🧮 Core: Applied exponential for logarithmic mean")
-        
-        # Create mean directory
+
         mean_dir = os.path.join(directory, "mean")
         os.makedirs(mean_dir, exist_ok=True)
         
@@ -508,24 +505,9 @@ class HoloTrackerCore:
         mean_image_uint8 = np.clip(mean_image, 0, 255).astype(np.uint8)
         mean_pil_vis = Image.fromarray(mean_image_uint8, mode='L')
         mean_pil_vis.save(mean_bmp_path)
-        
-        print(f"✅ Core: {mean_type.capitalize()} mean saved as {tif_filename}")
+
         return mean_tif_path  # Return the .tif path for use in calculations
 
-    def batch_process(self):
-        if not self.holograms_directory:
-            raise ValueError("Holograms directory not specified")
-        # Simulate processing
-        self.results = {
-            "localizations": [(0.1, 0.2, 0.3), (0.4, 0.5, 0.6), (0.7, 0.8, 0.9)],
-            "images": ["image1.png", "image2.png"]
-        }
-        return "Processing completed"
-
-    def cancel_batch(self):
-        self.results = {}
-        return "Processing cancelled"
-    
     def enter_test_mode(self):
         """Entre en mode test"""
         self.mode = 'TEST'
@@ -624,11 +606,9 @@ class HoloTrackerCore:
         Complete hologram processing pipeline following test_HoloTracker_locate.py
         Pipeline: Load -> Remove Mean -> Volume Propagation -> Focus -> CCL3D -> Label Analysis
         """
-        # print(f"🚀 Core: Starting hologram processing for {filename}")
-        
+
         if not CUPY_AVAILABLE:
-            # print("❌ Core: CuPy not available")
-            # Populate results with an explicit error so UI can display a meaningful message
+
             self.results = {
                 'number_of_objects': 0,
                 'features': np.array([]),
@@ -638,8 +618,7 @@ class HoloTrackerCore:
             return "Error: CuPy not available for GPU processing"
             
         if not self.memory_allocated:
-            # print("❌ Core: Test mode not initialized")
-            # Ensure results carry an explicit error to avoid empty dicts
+
             self.results = {
                 'number_of_objects': 0,
                 'features': np.array([]),
@@ -675,13 +654,7 @@ class HoloTrackerCore:
                 # Debug info about mean hologram
                 if self.h_mean_holo is not None:
                     mean_min, mean_max = self.h_mean_holo.min(), self.h_mean_holo.max()
-                    print(f"🧹 DEBUG: h_mean_holo available: shape={self.h_mean_holo.shape}, mean_range=[{mean_min:.3f}, {mean_max:.3f}]")
-                else:
-                    print(f"🧹 DEBUG: h_mean_holo is None!")
-                
-                print(f"🧹 DEBUG: remove_mean parameter = {remove_mean}")
-                print(f"🧹 DEBUG: cleaning_type parameter = {cleaning_type}")
-                
+
                 # Apply cleaning based on type
                 if cleaning_type == "subtraction":
                     input_min, input_max = self.h_raw_holo.min(), self.h_raw_holo.max()
@@ -691,11 +664,7 @@ class HoloTrackerCore:
                     cleaned_min_before = self.h_cleaned_holo.min()
                     self.h_cleaned_holo = self.h_cleaned_holo - self.h_cleaned_holo.min()  # Ensure non-negative
                     cleaned_min_after, cleaned_max_after = self.h_cleaned_holo.min(), self.h_cleaned_holo.max()
-                    
-                    print(f"🧹 Core: Input range: [{input_min:.1f}, {input_max:.1f}]")
-                    print(f"🧹 Core: Mean range: [{mean_min:.1f}, {mean_max:.1f}]")
-                    print(f"🧹 Core: Cleaned range: [{cleaned_min_after:.1f}, {cleaned_max_after:.1f}]")
-                    
+
                 else:  # division (default)
                     input_min, input_max = self.h_raw_holo.min(), self.h_raw_holo.max()
                     mean_min, mean_max = self.h_mean_holo.min(), self.h_mean_holo.max()
@@ -703,12 +672,9 @@ class HoloTrackerCore:
                     self.h_cleaned_holo = self.h_raw_holo.astype(np.float64) / (self.h_mean_holo + 1e-10)
                     self.h_cleaned_holo = np.power(self.h_cleaned_holo, 0.8).astype(np.float32)  # Limit extreme values
                     cleaned_min, cleaned_max = self.h_cleaned_holo.min(), self.h_cleaned_holo.max()
-                    
-                    print(f"🧹 Core: Input range: [{input_min:.1f}, {input_max:.1f}]")
-                    print(f"🧹 Core: Mean range: [{mean_min:.1f}, {mean_max:.1f}]") 
-                    print(f"🧹 Core: Cleaned range (division): [{cleaned_min:.3f}, {cleaned_max:.3f}]")
+
             else:
-                print(f"🧹 DEBUG: remove_mean = False, using raw hologram")
+
                 self.h_cleaned_holo[:] = self.h_raw_holo
             
             # Transfer cleaned hologram to GPU - reuse pre-allocated array
@@ -767,11 +733,14 @@ class HoloTrackerCore:
                 "SUM_OF_INTENSITY": Focus_type.SUM_OF_INTENSITY,
                 "SUM_OF_LAPLACIAN": Focus_type.SUM_OF_LAPLACIAN,
                 "SUM_OF_VARIANCE": Focus_type.SUM_OF_VARIANCE,
-                "TENEGRAD": Focus_type.TENEGRAD
+                "TENEGRAD": Focus_type.TENEGRAD,
+                "SUM_OF_GRADIENT": Focus_type.SUM_OF_GRADIENT,
+                "MEAN_ALL": Focus_type.MEAN_ALL,
+                "MEAN_LOG_ALL": Focus_type.MEAN_LOG_ALL
             }
             focus_type_enum = focus_type_map[focus_type_str]
             
-            # print(f"🎯 Core: Applying focus type: {focus_type_str} (enum: {focus_type_enum})")
+            # print(f" Core: Applying focus type: {focus_type_str} (enum: {focus_type_enum})")
             focus.focus(self.d_volume_module, self.d_volume_module, sum_size, focus_type_enum)
             
             stat_plane(self.d_volume_module, "d_volume after focus")
@@ -808,26 +777,19 @@ class HoloTrackerCore:
                 need_recalc = base_need
             
             if need_recalc:
-                print(f"🎯 DEBUG: Recalculating threshold...")
-                print(f"🎯 DEBUG: Reason - mode: {self.mode}, threshold: {self.threshold}, last_nb_StdVar: {self.last_nb_StdVar_threshold}")
+
                 self.threshold = calc_threshold(self.d_volume_module, nb_StdVar_threshold)
                 self.last_nb_StdVar_threshold = nb_StdVar_threshold
                 # If we computed for the first hologram in batch, mark it done
                 if self.mode == 'BATCH' and self.batch_threshold == "compute on 1st hologram":
                     self.batch_first_hologram_done = True
-            else:
-                print(f"🎯 DEBUG: Using cached threshold: {self.threshold}")
-                
-            print(f"🔍 DEBUG Threshold: {self.threshold} (nb_StdVar_threshold={nb_StdVar_threshold})")
-            
+
             # CCL3D
             d_labels, number_of_labels = CCL3D(
                 self.d_bin_volume_focus, self.d_volume_module, 
                 type_threshold.THRESHOLD, self.threshold, n_connectivity
             )
-            
-            print(f"🔍 DEBUG CCL3D result: {number_of_labels} labels found")
-            
+
             t4 = time.perf_counter()
             t_ccl = t4 - ccl_start
             
@@ -835,31 +797,24 @@ class HoloTrackerCore:
             cca_start = time.perf_counter()
             if number_of_labels > 0:
                 features = np.ndarray(shape=(number_of_labels,), dtype=dobjet)
-                
-                print(f"🔍 DEBUG Before CCA: {number_of_labels} labels, dx={dx}, dy={dy}, dz={dz}")
-                
+
                 features = CCA_CUDA_float(
                     d_labels, self.d_volume_module, number_of_labels, 
                     1, cam_nb_pix_X, cam_nb_pix_Y, nb_plane, dx, dy, dz
                 )
-                
-                print(f"🔍 DEBUG After CCA: {len(features) if features is not None else 0} features")
-                
+
                 # Filtrage par nombre de voxels
                 min_voxel = int(self.min_voxel)
                 max_voxel = int(self.max_voxel)
-                print(f"🔍 DEBUG Filter params: min_voxel={min_voxel}, max_voxel={max_voxel}")
-                
+
                 if min_voxel != 0 or max_voxel != 0:
                     features_before_filter = len(features) if features is not None else 0
                     features = CCL_filter(features, min_voxel, max_voxel)
                     features_after_filter = len(features) if features is not None else 0
-                    print(f"🔍 DEBUG Filter result: {features_before_filter} -> {features_after_filter} objects")
 
             else:
                 features = np.array([])
-                print(f"🔍 DEBUG No labels found, features set to empty array")
-                
+
             t5 = time.perf_counter()
             t_cca = t5 - cca_start
             t_total = t5 - start_processing
@@ -887,9 +842,7 @@ class HoloTrackerCore:
                     'total_processing': t_total
                 }
             }
-            
-            # print(f"✅ Core: Results stored with processing_times: {self.results['processing_times']}")
-            
+
             if number_of_labels > 0:
                 return f"Processing completed: {number_of_labels} objects found"
             else:
@@ -908,13 +861,6 @@ class HoloTrackerCore:
                 'particle_sizes': [],
                 'count': 0
             }
-            
-            # Debug: Check what self.results contains
-            try:
-                keys = list(self.results.keys()) if self.results and isinstance(self.results, dict) else []
-            except Exception:
-                keys = []
-            print(f"🔧 Core: self.results keys: {keys}")
 
             # Add processing times only if available to avoid KeyError
             if self.results and isinstance(self.results, dict) and 'processing_times' in self.results:
@@ -959,37 +905,6 @@ class HoloTrackerCore:
             return "No results to display"
         return f"3D data ready with {data['count']} particles"
 
-    def get_cleaned_hologram_image(self, directory, filename):
-        """Get cleaned hologram image for display"""
-        try:
-            filepath = os.path.join(directory, filename)
-            cam_nb_pix_X = int(self.holo_size_x)
-            cam_nb_pix_Y = int(self.holo_size_y)
-            
-            # Load hologram
-            h_holo = read_image(filepath, cam_nb_pix_X, cam_nb_pix_Y)
-            
-            # Apply mean removal if available
-            if self.h_mean_holo is not None:
-                h_holo_cleaned = h_holo / self.h_mean_holo
-                
-                # Normalize for display
-                min_val = h_holo_cleaned.min()
-                max_val = h_holo_cleaned.max()
-                h_holo_normalized = ((h_holo_cleaned - min_val) * 255 / (max_val - min_val)).astype(np.uint8)
-                
-                return Image.fromarray(h_holo_normalized)
-            else:
-                # Return original if no mean hologram
-                min_val = h_holo.min()
-                max_val = h_holo.max()
-                h_holo_normalized = ((h_holo - min_val) * 255 / (max_val - min_val)).astype(np.uint8)
-                return Image.fromarray(h_holo_normalized)
-                
-        except Exception as e:
-            # print(f"Error getting cleaned hologram: {e}")
-            return None
-
     def add_detection_markers_to_image(self, image, detections):
         """Add red markers to show detected objects on hologram"""
         try:
@@ -1004,64 +919,40 @@ class HoloTrackerCore:
             # Convert to RGB if grayscale
             if len(img_array.shape) == 2:
                 img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
-            
-            print(f"🔍 DEBUG add_detection_markers called - image shape: {img_array.shape}")
-            
+
             # Add red circles for each detection
             if 'features' in self.results and self.results['features'] is not None:
                 features = self.results['features']
-                print(f"🔍 DEBUG Found {len(features)} features to display")
+
             else:
-                print(f"🔍 DEBUG No features found in results")
+
                 print(f"  self.results keys: {list(self.results.keys()) if self.results else 'None'}")
             
             # Add red circles for each detection
             if 'features' in self.results and self.results['features'] is not None:
                 features = self.results['features']
-                print(f"🔍 DEBUG Found {len(features)} features to display")
-                
+
                 for i, feature in enumerate(features):
                     try:
-                        if i < 3:  # Only show detailed debug for first 3 features
-                            print(f"🔍 DEBUG Processing feature {i+1}: {feature}")
-                        
                         # Extract coordinates (baryX, baryY are in meters, convert to pixels)
                         x_m = feature[1]  # baryX in meters
                         y_m = feature[2]  # baryY in meters
-                        
-                        if i < 3:
-                            print(f"🔍 DEBUG Extracted coordinates: x_m={x_m}, y_m={y_m}")
                         
                         # Convert using the same dx, dy resolution as used in processing
                         dx = float(self.pixel_size) / float(self.objective_magnification)  # meters per pixel
                         dy = float(self.pixel_size) / float(self.objective_magnification)  # meters per pixel
                         
-                        if i < 3:
-                            print(f"🔍 DEBUG Spatial resolution: dx={dx} m/pixel, dy={dy} m/pixel")
-                        
                         # Convert from physical coordinates (meters) to pixel coordinates
                         x_pix = int(x_m / dx)
                         y_pix = int(y_m / dy)
                         
-                        if i < 3:
-                            print(f"🔍 DEBUG Pixel coordinates: x_pix={x_pix}, y_pix={y_pix}")
-                        
-                        # Draw red circle only if coordinates are within image bounds
+                        # Draw red filled dot (not a circle outline) if coordinates are within image bounds
                         if 0 <= x_pix < img_array.shape[1] and 0 <= y_pix < img_array.shape[0]:
-                            cv2.circle(img_array, (x_pix, y_pix), 5, (255, 0, 0), 2)
-                            if i < 3:
-                                print(f"  ✅ Circle drawn at ({x_pix}, {y_pix})")
-                        else:
-                            if i < 3:
-                                print(f"  ❌ Circle NOT drawn - coordinates out of bounds: ({x_pix}, {y_pix}) vs image size {img_array.shape}")
-                        
-                        # Show summary message after first 3 features
-                        if i == 2 and len(features) > 3:
-                            print(f"🔍 DEBUG ... (continuing to draw remaining {len(features)-3} features without detailed debug)")
-                            
+                            cv2.circle(img_array, (x_pix, y_pix), 3, (255, 0, 0), -1)  # Red filled circle, radius 3
+
                     except Exception as e:
                         if i < 3:
-                            print(f"❌ ERROR processing feature {i+1}: {e}")
+
                             print(f"   Feature data: {feature}")
                             import traceback
                             traceback.print_exc()
@@ -1076,7 +967,13 @@ class HoloTrackerCore:
             return image
 
     def add_detection_markers_to_image_2d_projection(self, image, results, projection_type):
-        """Ajoute des marqueurs de détection sur une projection 2D selon le type de projection"""
+        """Ajoute des marqueurs de détection (points rouges) sur une projection 2D selon le type de projection
+        
+        Args:
+            image: Image PIL ou array numpy
+            results: Résultats de détection
+            projection_type: Type de projection ('XY', 'XZ', 'YZ')
+        """
         try:
             import cv2
             
@@ -1130,9 +1027,9 @@ class HoloTrackerCore:
                     coord_x = max(0, min(coord_x, img_array.shape[1] - 1))
                     coord_y = max(0, min(coord_y, img_array.shape[0] - 1))
                     
-                    # Draw markers (green circle + red center)
-                    cv2.circle(img_array, (coord_x, coord_y), 5, (0, 255, 0), 2)
-                    cv2.circle(img_array, (coord_x, coord_y), 2, (255, 0, 0), -1)
+                    # Draw marker: red filled circle (no green circle anymore)
+                    # Use radius=3 with filled circle (-1) for a visible but compact red dot
+                    cv2.circle(img_array, (coord_x, coord_y), 3, (255, 0, 0), -1)  # Red filled circle
             
             return Image.fromarray(img_array)
             
@@ -1153,9 +1050,14 @@ class HoloTrackerCore:
             if additional_display == "None":
                 return image
             elif additional_display == "Centroid positions":
+                # Show ONLY centroid markers (red dots), no segmentation
                 return self._add_centroid_overlay(image, display_type, plane_number, projection_type)
             elif additional_display == "Segmentation":
+                # Show ONLY segmentation (blue voxels), no centroid markers
                 return self._add_segmentation_overlay(image, display_type, plane_number, projection_type)
+            elif additional_display == "Segmentation + Centroid":
+                # Show BOTH segmentation (blue voxels) AND centroid markers (red dots)
+                return self._add_segmentation_and_centroid_overlay(image, display_type, plane_number, projection_type)
             else:
                 return image
         except Exception as e:
@@ -1163,7 +1065,7 @@ class HoloTrackerCore:
             return image
 
     def _add_centroid_overlay(self, image, display_type, plane_number, projection_type=None):
-        """Add centroid position markers to the image"""
+        """Add centroid position markers (red dots) to the image"""
         try:
             if display_type == "VOLUME_PLANE_NUMBER":
                 # For volume plane: show only markers for the specific plane
@@ -1183,22 +1085,6 @@ class HoloTrackerCore:
         try:
             if self.d_bin_volume_focus is None:
                 return image
-
-            # Helper: normalize a numpy array to uint8 for display
-            def _to_uint8(arr):
-                arr = np.array(arr)  # ensure numpy
-                if np.iscomplexobj(arr):
-                    arr = np.abs(arr)
-                arr = arr.astype(np.float64)
-                mx = arr.max() if arr.size else 0.0
-                mn = arr.min() if arr.size else 0.0
-                if mx > mn:
-                    out = ((arr - mn) * 255.0 / (mx - mn)).astype(np.uint8)
-                elif mx > 0:
-                    out = (arr * 255.0 / mx).astype(np.uint8)
-                else:
-                    out = np.zeros_like(arr, dtype=np.uint8)
-                return out
 
             if display_type == "VOLUME_PLANE_NUMBER":
                 # For volume plane: show segmentation for the specific plane
@@ -1229,6 +1115,25 @@ class HoloTrackerCore:
             return image
         except Exception as e:
             # print(f"Error adding segmentation overlay: {e}")
+            return image
+
+    def _add_segmentation_and_centroid_overlay(self, image, display_type, plane_number, projection_type=None):
+        """Add both segmentation overlay AND centroid markers to the image
+        
+        This shows:
+        - Blue voxels (segmentation from _add_segmentation_overlay)
+        - Red dots (centroid markers from _add_centroid_overlay)
+        """
+        try:
+            # First add segmentation (blue voxels)
+            image = self._add_segmentation_overlay(image, display_type, plane_number, projection_type)
+            
+            # Then add centroid markers (red dots) on top
+            image = self._add_centroid_overlay(image, display_type, plane_number, projection_type)
+            
+            return image
+        except Exception as e:
+            # print(f"Error adding segmentation + centroid overlay: {e}")
             return image
 
     def _add_centroid_markers_for_plane(self, image, plane_number):
@@ -1275,8 +1180,8 @@ class HoloTrackerCore:
                         x_pix = int(x_um * 1e-6 / effective_pixel_size)
                         y_pix = int(y_um * 1e-6 / effective_pixel_size)
                         
-                        # Draw red circle
-                        cv2.circle(img_array, (x_pix, y_pix), 10, (255, 0, 0), 2)
+                        # Draw red filled dot (not a circle outline)
+                        cv2.circle(img_array, (x_pix, y_pix), 3, (255, 0, 0), -1)  # Red filled circle, radius 3
             
             return Image.fromarray(img_array)
         except Exception as e:
@@ -1299,8 +1204,7 @@ class HoloTrackerCore:
                 img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
             
             # Debug information
-            print(f"Debug blend: img_array shape: {img_array.shape}, segmentation shape: {segmentation_data.shape}")
-            
+
             # Ensure segmentation_data matches image dimensions
             img_h, img_w = img_array.shape[:2]
             seg_h, seg_w = segmentation_data.shape
@@ -1308,17 +1212,15 @@ class HoloTrackerCore:
             if seg_h != img_h or seg_w != img_w:
                 # Resize segmentation to match image
                 segmentation_data = cv2.resize(segmentation_data.astype(np.float32), (img_w, img_h))
-                print(f"Debug blend: Resized segmentation to {segmentation_data.shape}")
-            
+
             # Create binary mask for segmentation
             if segmentation_data.max() > 0:
                 # Create binary mask where segmentation is present
                 mask = (segmentation_data > 0).astype(np.uint8)
-                print(f"Debug blend: Found {np.sum(mask)} non-zero pixels in mask")
+
             else:
                 mask = np.zeros_like(segmentation_data, dtype=np.uint8)
-                print("Debug blend: No segmentation data found")
-            
+
             # Create result image starting with original
             result = img_array.copy()
             
@@ -1365,29 +1267,12 @@ class HoloTrackerCore:
         
         self.memory_allocated = False
         
-    def _initialize_propagation_kernels(self):
-        """Initialize propagation kernels using existing functions from test_HoloTracker_locate.py"""
-        try:
-            # The propagation kernel is calculated dynamically in volume_propag_angular_spectrum_to_module
-            # We only need to allocate memory space as in test_HoloTracker_locate.py
-            # print("Status: Propagation kernels space allocated successfully")
-            # The d_KERNEL is already allocated in allocate, no need to recalculate it here
-            pass
-            
-        except Exception as e:
-            # print(f"Warning: Could not initialize propagation kernels: {e}")
-            # Fallback - use existing kernel or create if needed
-            cam_nb_pix_X = int(self.holo_size_x)
-            cam_nb_pix_Y = int(self.holo_size_y)
-            if self.d_KERNEL.shape != (cam_nb_pix_Y, cam_nb_pix_X):
-                self.d_KERNEL = cp.zeros(shape=(cam_nb_pix_Y, cam_nb_pix_X), dtype=cp.complex64)
-
     def extract_object_slices(self, pos_x_um, pos_y_um, pos_z_um, vox_xy, vox_z):
         """Extract 3 slice views (XY, XZ, YZ) around an object from the reconstructed volume"""
         if not self.memory_allocated or self.d_volume_module is None:
             raise ValueError("Test mode not initialized or no volume available")
             
-        # print(f"🔍 Core: Extracting slices at ({pos_x_um:.3f}, {pos_y_um:.3f}, {pos_z_um:.3f}) µm")
+        # print(f" Core: Extracting slices at ({pos_x_um:.3f}, {pos_y_um:.3f}, {pos_z_um:.3f}) µm")
         
         # Convert micrometers to pixel coordinates using the same formula as in add_detection_markers
         volume_shape = self.d_volume_module.shape  # (Z, Y, X)
@@ -1416,11 +1301,11 @@ class HoloTrackerCore:
         
         # print(f"📍 Corrected pixel coordinates: ({pos_x_pix}, {pos_y_pix}, {pos_z_pix})")
         # print(f"📐 Volume shape: {volume_shape}")
-        # print(f"🔧 Spatial resolution: dx={dx*1e6:.3f} µm/pixel, dy={dy*1e6:.3f} µm/pixel")
+        # print(f" Spatial resolution: dx={dx*1e6:.3f} µm/pixel, dy={dy*1e6:.3f} µm/pixel")
         
         # Calculate effective pixel size for debugging
         effective_pixel_size = dx * 1e6  # Convert from meters to micrometers
-        # print(f"🔍 Effective pixel size: {effective_pixel_size:.3f} µm/pixel")
+        # print(f" Effective pixel size: {effective_pixel_size:.3f} µm/pixel")
         # Skip the problematic print line
         
         # Calculate slice boundaries with padding
@@ -1448,7 +1333,7 @@ class HoloTrackerCore:
             pos_z_pix, pos_y_pix, vox_z, vox_xy
         )
         
-        # print(f"✅ Extracted slices: XY({xy_slice.shape}), XZ({xz_slice.shape}), YZ({yz_slice.shape})")
+        # print(f" Extracted slices: XY({xy_slice.shape}), XZ({xz_slice.shape}), YZ({yz_slice.shape})")
         
         return {
             'xy_slice': cp.asnumpy(xy_slice),
@@ -1614,13 +1499,13 @@ class HoloTrackerCore:
         try:
             # Check that we have a propagated volume
             if self.d_volume_module is None:
-                print("❌ No propagated volume available for focus analysis")
+
                 return None
                 
             # Check coordinates
             if (x_pos < 0 or x_pos >= self.d_volume_module.shape[2] or
                 y_pos < 0 or y_pos >= self.d_volume_module.shape[1]):
-                print(f"❌ Position ({x_pos}, {y_pos}) out of volume bounds")
+
                 return None
                 
             # Focus type mapping
@@ -1628,17 +1513,18 @@ class HoloTrackerCore:
                 "SUM_OF_INTENSITY": Focus_type.SUM_OF_INTENSITY,
                 "SUM_OF_LAPLACIAN": Focus_type.SUM_OF_LAPLACIAN,
                 "SUM_OF_VARIANCE": Focus_type.SUM_OF_VARIANCE,
-                "TENEGRAD": Focus_type.TENEGRAD
+                "TENEGRAD": Focus_type.TENEGRAD,
+                "SUM_OF_GRADIENT": Focus_type.SUM_OF_GRADIENT,
+                "MEAN_ALL": Focus_type.MEAN_ALL,
+                "MEAN_LOG_ALL": Focus_type.MEAN_LOG_ALL
             }
             
             if focus_type_str not in focus_type_map:
-                print(f"❌ Unknown focus type: {focus_type_str}")
+
                 return None
                 
             focus_type_enum = focus_type_map[focus_type_str]
-            
-            print(f"🔍 Focus analysis {focus_type_str} at position ({x_pos}, {y_pos}) with sum_size={sum_size}")
-            
+
             # Create temporary volume for focus computation
             focus_volume = cp.copy(self.d_volume_module)
             
@@ -1651,9 +1537,7 @@ class HoloTrackerCore:
                 # Extract value at specified pixel
                 pixel_value = float(focus_volume[z, y_pos, x_pos])
                 focus_values.append(pixel_value)
-                
-            print(f"✅ Analysis completed: {len(focus_values)} values extracted")
-            
+
             # Clean up GPU memory
             del focus_volume
             cp.get_default_memory_pool().free_all_blocks()
@@ -1661,7 +1545,7 @@ class HoloTrackerCore:
             return focus_values
             
         except Exception as e:
-            print(f"❌ Error during focus analysis: {e}")
+
             import traceback
             traceback.print_exc()
             return None

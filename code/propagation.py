@@ -42,33 +42,9 @@ from cupyx import jit
 from cupyx.scipy import ndimage as cp_ndimage
 from traitement_holo import *
 
-
-@jit.rawkernel()
-def d_calc_phase(d_plan_complex, d_phase, size_x, size_y):
-
-    #### Fonction qui ne marche pas
-    ### impossible d'extraire la partie imaginaire d'un complexe dans un kernel jit.rawkernel
-
-    index = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
-    sizeXY = size_x * size_y
-
-    jj = index // size_x
-    ii = index - jj * size_x
-
-    if (ii < size_x and jj < size_y):
-        cplx = cp.complex64(d_plan_complex[ii, jj])
-        r = cp.real(cplx)
-        if (r == 0.0):
-            d_phase[ii, jj] = 0.0
-        elif(cp.real(cplx) > 0.0):
-            d_phase[ii, jj] = cp.arctan(cp.imag(cplx) / cp.real(cplx))
-        else:
-            d_phase[ii, jj] = cp.pi + cp.arctan(cp.imag(cplx) / cp.real(cplx))
-
 #########################################################################################################################################
 ################################               traitements des KERNELS               ####################################################
 #########################################################################################################################################
-
 
 @jit.rawkernel()
 def d_filter_FFT(d_plan_IN, d_plan_OUT, sizeX, sizeY, dMin, dMax):
@@ -93,7 +69,6 @@ def d_filter_FFT(d_plan_IN, d_plan_OUT, sizeX, sizeY, dMin, dMax):
         else:
             d_plan_OUT[jj, ii] = 0.0 + 0.0j
 
-
 @jit.rawkernel()
 def d_spec_filter_FFT(d_plan_IN, d_plan_OUT, sizeX, sizeY, dMin, dMax):
 
@@ -115,17 +90,13 @@ def d_spec_filter_FFT(d_plan_IN, d_plan_OUT, sizeX, sizeY, dMin, dMax):
         else:
             d_plan_OUT[jj, ii] = d_plan_IN[jj, ii]
 
-
-
         # if ((distanceCentre > dMin) and (distanceCentre < dMax )):
         #     #d_plan_OUT[ii, jj] = d_plan_IN[ii, jj] * cp.log(1 + (distanceCentre - dMin)/ (dMax - dMin))
         #     d_plan_OUT[jj, ii] = d_plan_IN[jj, ii]
         # else:
         #     d_plan_OUT[jj, ii] = 0.0 + 0.0j
 
-
 #		spec_mask_filter_device[xy] = log(1 + (R - R_low));
-
 
 #########################################################################################################################################
 ################################               calculs des KERNELS                  #####################################################
@@ -183,7 +154,6 @@ def d_calc_kernel_angular_spectrum_jit(d_KERNEL, lambda_milieu, magnification, p
         else:
             d_KERNEL[jj, ii] = 0.0+0j
 
-
 @jit.rawkernel()
 def d_propag_fresnel_phase1_jit(d_HOLO_IN, d_HOLO_OUT, lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distance):
     index = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
@@ -223,7 +193,6 @@ def d_propag_fresnel_phase2_jit(d_HOLO_IN, d_HOLO_OUT, lambda_milieu, magnificat
         arg = (cp.pi * 1.0j / (lambda_milieu * distance)) * (X*X*dp_X*dp_X + Y*Y*dp_Y*dp_Y)
         d_HOLO_OUT[jj, ii] = cp.exp(arg) * d_HOLO_IN[jj, ii]
 
-
 #########################################################################################################################################
 ################################               propagations                  ############################################################
 #########################################################################################################################################
@@ -245,7 +214,6 @@ lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distance, f_pix_min, 
     d_FFT_HOLO_PROPAG = d_FFT_HOLO * d_KERNEL
     d_HOLO_PROPAG = ifft2(ifftshift(d_FFT_HOLO_PROPAG), norm = 'ortho')
     return(d_HOLO_PROPAG)
-
 
 def propag_fresnell(d_HOLO, d_HOLO_2, d_FFT, d_HOLO_PROPAG,
 lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distance):
@@ -295,13 +263,8 @@ lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distancePropagIni, pa
     for i in range(nbPropag):
         distance = distancePropagIni + i * pasPropag
         d_calc_kernel_angular_spectrum_jit[nBlock, nthread](d_KERNEL, lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distance)
-        #analyse_array_cplx(d_KERNEL)
-
         d_FFT_HOLO_PROPAG = d_FFT_HOLO * d_KERNEL
-        #analyse_array_cplx(d_FFT_HOLO_PROPAG)
         d_HOLO_VOLUME_PROPAG[:,:,i] = ifft2(ifftshift(d_FFT_HOLO_PROPAG), norm = 'ortho')
-        #print("\n intensité distance ", distance, " :")
-        #analyse_array_cplx(d_HOLO_VOLUME_PROPAG[:,:,i])
 
 def spec_filter_FFT(d_FFT_HOLO, d_FFT_HOLO_FILTERED, nb_pix_X, nb_pix_Y, f_pix_min, f_pix_max):
 
@@ -328,9 +291,6 @@ lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distancePropagIni, pa
                     nb_pix_X, nb_pix_Y, f_pix_min, f_pix_max)
         
     d_HOLO_FILTERED[:] = cp.abs(ifft2(ifftshift(d_FFT_HOLO_FILTERED), norm = 'ortho'))
-    print("propagation:")
-    print("lambda:", lambda_milieu, "magnification:", magnification, "pixSize:", pixSize, "nb_pix_X:", nb_pix_X, "nb_pix_Y:", nb_pix_Y)
-
 
     for i in range(nbPropag):
         distance = distancePropagIni + i * pasPropag
@@ -338,18 +298,6 @@ lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distancePropagIni, pa
         d_FFT_HOLO_PROPAG[:] = d_FFT_HOLO_FILTERED * d_KERNEL
         d_HOLO_PROPAG[:] = ifft2(ifftshift(d_FFT_HOLO_PROPAG), norm = 'ortho')
         d_HOLO_VOLUME_PROPAG_MODULE[i,:,:] = cp.abs(d_HOLO_PROPAG)
-        # d_HOLO_PROPAG[:] = fft2(fftshift(d_FFT_HOLO_PROPAG), norm = 'ortho')
-        # d_HOLO_VOLUME_PROPAG_MODULE[i,:,:] = cp.flip(cp.flip(cp.sqrt(cp.real(d_HOLO_PROPAG)**2 + cp.imag(d_HOLO_PROPAG)**2), axis=1), axis=0)
-
-
-
-
-def test_multiFFT(d_plan, nb_FFT):
-    for i in range(nb_FFT):
-        d_fft_plan = fftshift(fft2(d_plan, norm = 'ortho'))
-        print('somme avant fft:', cp.asnumpy(intensite(d_plan)).sum(), 'somme après FFT', cp.asnumpy(intensite(d_fft_plan)).sum())
-        d_plan = ifft2(ifftshift(d_fft_plan), norm = 'ortho')
-        print('somme avant fft:', cp.asnumpy(intensite(d_plan)).sum(), 'somme après FFT', cp.asnumpy(intensite(d_fft_plan)).sum())
 
 def volume_propag_Rayleigh_Sommerfeld(d_HOLO, d_FFT_HOLO, d_KERNEL, d_FFT_KERNEL, d_FFT_HOLO_PROPAG, d_HOLO_VOLUME_PROPAG,
 lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, pasPropag, nbPropag):
@@ -378,39 +326,4 @@ lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, pasPropag, nbPropag):
         d_propag_fresnel_phase1_jit[nBlock, nthread](d_HOLO, d_Holo_temp, lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distance)
         d_FFT = fftshift(fft2(d_Holo_temp, norm = 'ortho'))
         d_propag_fresnel_phase2_jit[nBlock, nthread](d_FFT, d_HOLO_VOLUME_PROPAG[:,:,i], lambda_milieu, magnification, pixSize, nb_pix_X, nb_pix_Y, distance)
-
-
-@jit.rawkernel()
-def clean_plan_cplx_device(d_plan_cplx, size_x, size_y, posX, posY, clean_radius_pix, replace_cplx_value):
-
-    index = jit.blockIdx.x * jit.blockDim.x + jit.threadIdx.x
-    sizeXY = size_x * size_y
-
-    jj = cp.int32(index) // cp.int32(size_x)
-    ii = cp.int32(index) - cp.int32(jj * size_x)
-
-    if (ii < size_x and jj < size_y):
-
-        #calcul distance
-        distance = cp.sqrt((posX - ii)**2 + (posY - jj)**2)
-        cplx = d_plan_cplx[ii, jj]
-        r = cp.real(cplx)
-        i = cp.imag(cplx)
-        mod = cp.sqrt(r**2 + i**2)
-
-        if (distance < clean_radius_pix):
-            d_plan_cplx[ii, jj] = 0.0+0j
-        else:
-            d_plan_cplx[ii, jj] = mod + 0j
-
-
-def clean_plan_cplx(d_plan_cplx, size_x, size_y, posX, posY, clean_radius_pix, replace_value):
-
-    nthread = 1024
-    nBlock = math.ceil(size_x * size_y // nthread)
-
-    print(type(d_plan_cplx[0,0]))
-
-    clean_plan_cplx_device[nBlock, nthread](d_plan_cplx, size_x, size_y, posX, posY, clean_radius_pix, replace_value)
-
 

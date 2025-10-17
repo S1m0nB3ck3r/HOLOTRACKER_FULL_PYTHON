@@ -39,7 +39,7 @@ import propagation as propag
 import focus 
 from focus import Focus_type
 from CCL3D import *
-import pyximport; pyximport.install()
+# import pyximport; pyximport.install()
 from cupyx.scipy.fft import fftn as cpxfftn
 from cupyx.scipy.fft import ifftn as icpxfftn
 from cupy.fft import rfft2, fft2, ifft2, fftshift, ifftshift, fftn, ifftn
@@ -50,8 +50,11 @@ import trackpy.diag as dg
 
 # Parameters
 display_images = False
-path = r'C:\TRAVAIL\RepositoriesGithub\HoloTracker\Images_test'
-result_filename = 'result_python_sum15_TENEGRAD_STD15_each.csv'
+# Use relative path to Film REF directory (parent folder from code/)
+script_dir = os.path.dirname(os.path.abspath(__file__))  # /path/to/code
+project_root = os.path.dirname(script_dir)  # /path/to/project
+path = os.path.join(project_root, 'Film REF')
+result_filename = os.path.join(path, 'result_sum15_TENEGRAD_STD15_each.csv')
 type_image = 'bmp'
 
 #hologram parameters

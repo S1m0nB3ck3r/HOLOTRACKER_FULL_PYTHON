@@ -25,6 +25,11 @@ class HoloTrackerController:
         self.batch_iteration_start_time = None
         self.last_iteration_time = None
         
+        # Variables for pending batch setup
+        self.pending_batch_directory = None
+        self.pending_batch_files = None
+        self.pending_batch_display_results = None
+        
         # Variables for current image display
         self.current_display_info = {
             'directory': None,
@@ -57,7 +62,7 @@ class HoloTrackerController:
             if result:
                 self.handle_core_result(result)
         except Exception as e:
-            # print(f"❌ Error checking core results: {e}")
+            # print(f" Error checking core results: {e}")
             pass
         finally:
             # Schedule next check
@@ -79,21 +84,23 @@ class HoloTrackerController:
             remove_mean = self.ui.parameters.get('remove_mean', False)
             if remove_mean:
                 self.ui.display_combobox.set("CLEANED_HOLOGRAM")
-                # print("🎯 Auto-display: CLEANED_HOLOGRAM (Remove mean = True)")
+                # print(" Auto-display: CLEANED_HOLOGRAM (Remove mean = True)")
             else:
                 self.ui.display_combobox.set("RAW_HOLOGRAM")
-                # print("🎯 Auto-display: RAW_HOLOGRAM (Remove mean = False)")
+                # print(" Auto-display: RAW_HOLOGRAM (Remove mean = False)")
             
             # Unified processing: ENTER_TEST_MODE now does Allocation + Pipeline
             if result.data.get('cluster_positions') is not None:
                 # We have complete results (allocation + pipeline)
-                self.update_status("Test mode activated - Complete processing done")
+                num_objects = result.data.get('count', 0)
+                self.last_object_count = num_objects  # Store for future parameter updates
+                self.update_status(f"Test mode activated - Found {num_objects} objects")
                 try:
-                    # print("📊 Controller: Displaying complete results from ENTER_TEST_MODE")
+
                     self.ui.display_results(result.data)
-                    # print("✅ Controller: ENTER_TEST_MODE results displayed successfully")
+
                 except Exception as e:
-                    # print(f"❌ Controller: Error displaying ENTER_TEST_MODE results: {e}")
+
                     pass
             else:
                 # Just allocation (no hologram selected)
@@ -104,22 +111,21 @@ class HoloTrackerController:
                 filename = self.ui.hologram_combobox.get()
                 if directory and filename:
                     try:
-                        # print("🖼️  Controller: Updating image display with new display type")
+
                         self.ui.on_display_changed()
-                        # print("✅ Controller: Image display updated successfully")
+
                     except Exception as e:
-                        # print(f"❌ Controller: Error updating image display: {e}")
+
                         pass
             
         elif result.command_type == CommandType.PROCESS_HOLOGRAM:
             # Display results and timing with robust error handling
             try:
-                # print("📊 Controller: About to call ui.display_results")
+
                 self.ui.display_results(result.data)
-                # print("✅ Controller: ui.display_results completed successfully")
+
             except Exception as e:
-                # print(f"❌ Controller: Error in ui.display_results: {e}")
-                # Continue even if 3D display fails
+
                 pass
             
             # processing_times are already in result.data, so no need for separate call
@@ -128,9 +134,9 @@ class HoloTrackerController:
                 if result.processing_times:
                     timing_data = {'processing_times': result.processing_times}
                     self.ui.update_timing_display(timing_data)
-                    # print("✅ Controller: Timing display updated successfully")
+
             except Exception as e:
-                # print(f"❌ Controller: Error updating timing display: {e}")
+
                 pass
             
             # Afficher l'image
@@ -153,12 +159,13 @@ class HoloTrackerController:
                     }
                     
                     self.ui.display_hologram_image(result_image)
-                    # print("✅ Controller: Image display updated successfully")
+
                 except Exception as e:
-                    # print(f"❌ Controller: Error displaying image: {e}")
+
                     pass
             
             num_objects = result.data.get('count', 0)
+            self.last_object_count = num_objects  # Store for future parameter updates
             self.update_status(f"Hologram processed - Found {num_objects} objects")
             
         elif result.command_type == CommandType.CHANGE_PARAMETER:
@@ -175,6 +182,69 @@ class HoloTrackerController:
                     CommandType.PROCESS_HOLOGRAM,
                     {'directory': directory, 'filename': filename}
                 )
+        
+        elif result.command_type == CommandType.REALLOCATE:
+            allocation_time = result.processing_times.get('allocation', 0) if result.processing_times else 0
+            self.update_status(f"Reallocation completed: {allocation_time:.3f}s")
+        
+        elif result.command_type == CommandType.UPDATE_ALL_PARAMETERS:
+            # Parameters updated, check if we have results to display
+            print(f"[DEBUG] UPDATE_ALL_PARAMETERS - has cluster_positions: {result.data.get('cluster_positions') is not None}")
+            print(f"[DEBUG] UPDATE_ALL_PARAMETERS - count: {result.data.get('count', 'N/A')}")
+            print(f"[DEBUG] UPDATE_ALL_PARAMETERS - data keys: {list(result.data.keys())}")
+            
+            if result.data.get('cluster_positions') is not None:
+                # We have processed results - display them
+                try:
+                    self.ui.display_results(result.data)
+                except Exception as e:
+                    pass
+                
+                # Update timing display
+                try:
+                    if result.processing_times:
+                        timing_data = {'processing_times': result.processing_times}
+                        self.ui.update_timing_display(timing_data)
+                except Exception as e:
+                    pass
+                
+                num_objects = result.data.get('count', 0)
+                self.last_object_count = num_objects  # Store for future parameter updates
+                print(f"[DEBUG] Full reprocessing - Found {num_objects} objects")
+                self.update_status(f"Parameters updated - Hologram reprocessed - Found {num_objects} objects")
+            else:
+                # Just parameter update without reprocessing - show last object count if available
+                if hasattr(self, 'last_object_count'):
+                    self.update_status(f"Parameters updated - {self.last_object_count} objects (from last processing)")
+                else:
+                    self.update_status("Parameters updated")
+            
+            # ALWAYS refresh image display after parameter update (whether reprocessed or not)
+            # This handles changes to display parameters (display_type, plane_number, use_log, etc.)
+            directory = result.data.get('directory', '') or self.ui.dir_text.get("1.0", "end-1c").strip()
+            filename = result.data.get('filename', '') or self.ui.hologram_combobox.get()
+            
+            if directory and filename:
+                try:
+                    display_type = self.ui.display_combobox.get()
+                    plane_number = int(self.ui.plane_number_spinbox.get()) if self.ui.plane_number_spinbox.get() else 0
+                    additional_display = self._get_current_additional_display()
+                    use_log = self.ui.display_log_var.get()
+                    result_image = self.core.get_display_image(directory, filename, display_type, plane_number, additional_display, use_log=use_log)
+                    
+                    # Store current display info
+                    self.current_display_info = {
+                        'directory': directory,
+                        'filename': filename,
+                        'display_type': display_type,
+                        'plane_number': plane_number,
+                        'additional_display': additional_display,
+                        'use_log': use_log
+                    }
+                    
+                    self.ui.display_hologram_image(result_image)
+                except Exception as e:
+                    pass
                 
         elif result.command_type == CommandType.EXIT_TEST_MODE:
             self.set_state("WAIT")
@@ -187,15 +257,24 @@ class HoloTrackerController:
             self.update_status(f"Allocation completed: {allocation_time:.3f}s")
             
         elif result.command_type == CommandType.ENTER_BATCH_MODE:
-            self.set_state("BATCH_MODE")
-            csv_path = result.data.get('csv_path', '')
-            if csv_path:
-                csv_filename = os.path.basename(csv_path)
-                self.update_status(f"Batch mode activated - CSV: {csv_filename}")
-                # UI update: enable batch controls, gray out parameters
-                self.ui.on_batch_mode_entered(csv_filename)
+            if result.success:
+                self.set_state("BATCH_MODE")
+                csv_path = result.data.get('csv_path', '')
+                if csv_path:
+                    csv_filename = os.path.basename(csv_path)
+                    self.update_status(f"Batch mode activated - CSV: {csv_filename}")
+                    # UI update: enable batch controls, gray out parameters
+                    self.ui.on_batch_mode_entered(csv_filename)
+                else:
+                    self.update_status("Batch mode activated")
+                
+                # Continuer avec le reste des commandes batch
+                self._continue_batch_setup()
             else:
-                self.update_status("Batch mode activated")
+                # Erreur lors de l'activation du mode batch
+                self.update_status(f"Failed to start batch mode: {result.error_message}")
+                # S'assurer que l'état reste en WAIT
+                self.set_state("WAIT")
                 
         elif result.command_type == CommandType.PROCESS_HOLOGRAM_BATCH:
             # Calculate time between iterations (complete pipeline)
@@ -203,9 +282,9 @@ class HoloTrackerController:
             current_time = time.perf_counter()
             if self.batch_iteration_start_time is not None:
                 self.last_iteration_time = current_time - self.batch_iteration_start_time
-                # print(f"⏱️  CONTROLLER: Iteration time calculated: {self.last_iteration_time*1000:.1f}ms")
+                # print(f"⏱  CONTROLLER: Iteration time calculated: {self.last_iteration_time*1000:.1f}ms")
             else:
-                # print("⏱️  CONTROLLER: First iteration, no previous time")
+                # print("⏱  CONTROLLER: First iteration, no previous time")
                 pass
             self.batch_iteration_start_time = current_time
             
@@ -224,15 +303,13 @@ class HoloTrackerController:
                         var_name = checkbox.cget('variable')
                         if var_name:
                             display_checked = var_name.get()
-                            # print(f"✅ DEBUG: Found checkbox via cget: {display_checked}")
+
                         else:
-                            # print("❌ DEBUG: checkbox variable is None")
                             pass
-                    else:
-                        print("❌ DEBUG: checkbox has no cget method")
+
                 except Exception as e:
-                    print(f"❌ DEBUG: Error accessing checkbox: {e}")
-            
+                    pass
+
             # Si pas trouvé, essayer les noms de variables directement
             if not display_checked:
                 for attr_name in dir(self.ui):
@@ -241,16 +318,14 @@ class HoloTrackerController:
                             attr_obj = getattr(self.ui, attr_name)
                             if hasattr(attr_obj, 'get'):
                                 value = attr_obj.get()
-                                print(f"🔍 DEBUG: Found variable {attr_name} = {value}")
+
                                 if attr_name in ['display_results_var', 'display_batch_results_var']:
                                     display_checked = value
-                                    print(f"✅ DEBUG: Using {attr_name} = {display_checked}")
+
                                     break
                         except:
                             pass
-            
-            print(f"🔍 DEBUG: Final display_checked = {display_checked}")
-            
+
             # TOUJOURS mettre à jour les temps d'exécution en mode BATCH
             if 'processing_times' in result.data and self.last_iteration_time:
                 # Créer une copie des processing_times avec iteration_time
@@ -279,6 +354,12 @@ class HoloTrackerController:
                 hologram_number = batch_info.get('hologram_number', 0)
                 total_files = getattr(self, 'batch_total_files', '?')
                 self.update_status(f"Batch processing: {hologram_number}/{total_files}")
+                
+                # Auto-exit batch mode when all holograms are processed
+                if isinstance(total_files, int) and hologram_number >= total_files:
+                    self.update_status(f"Batch complete: {hologram_number}/{total_files} processed - Exiting batch mode")
+                    # Exit batch mode automatically
+                    self.on_exit_batch_mode()
             
             num_objects = result.data.get('count', 0)
             filename = result.data.get('filename', '')
@@ -294,8 +375,7 @@ class HoloTrackerController:
                 object_num = result.data['object_num']
                 slices_data = result.data['slices']
                 display_in_dialog = result.data.get('display_in_dialog', False)
-                print(f"✅ Slices extracted for object #{object_num}, dialog mode: {display_in_dialog}")
-                
+
                 # Send to UI for display - different methods based on display mode
                 if display_in_dialog and hasattr(self, 'dialog_for_slices'):
                     # Display in existing dialog
@@ -306,7 +386,7 @@ class HoloTrackerController:
                     # Display in separate window (original behavior)
                     self.ui.display_object_slices(object_num, slices_data)
             else:
-                print(f"❌ Failed to extract slices: {result.error}")
+
                 self.update_status(f"Error extracting slices: {result.error}")
                 # If there's a dialog waiting, show error there too
                 if hasattr(self, 'dialog_for_slices'):
@@ -316,28 +396,41 @@ class HoloTrackerController:
     def on_parameter_changed(self, name, value):
         try:
             if self.state == "TEST_MODE":
-                # Parameters that require pipeline restart
-                pipeline_restart_params = [
-                    'mean_hologram_image_path', 'holo_size_x', 'holo_size_y', 'number_of_planes',
-                    'distance', 'step', 'high_pass', 'low_pass', 'focus_type', 'sum_size',
-                    'nb_StdVar_threshold', 'connectivity', 'cleaning_type', 'remove_mean'
-                ]
+                # First, update ALL parameters from UI
+                self.ui.update_parameters_from_ui()
                 
-                # Send parameter change command to Core
-                command_data = {'name': name, 'value': value}
+                # IN TEST_MODE: ANY PARAMETER CHANGE = FULL REPROCESSING
+                # (UPDATE → ALLOCATION → PROCESSING → DISPLAY)
                 
-                # If we have current hologram info and parameter requires pipeline restart
-                if (name in pipeline_restart_params and 
-                    self.current_display_info['directory'] and 
+                # Check if this parameter requires reallocation (dimensions changed)
+                reallocation_params = ['holo_size_x', 'holo_size_y', 'number_of_planes']
+                needs_reallocation = name in reallocation_params
+                
+                print(f"Parameter '{name}' changed to '{value}' - full reprocessing")
+                
+                # If reallocation needed, send REALLOCATE command first
+                if needs_reallocation:
+                    print(f"Reallocation needed (dimension changed: {name})")
+                    command_data = {
+                        'parameters': self.ui.parameters,
+                        'changed_param': name
+                    }
+                    self.core_comm.send_command(CommandType.REALLOCATE, command_data)
+                
+                # ALWAYS restart pipeline with current hologram (if available)
+                if (self.current_display_info['directory'] and 
                     self.current_display_info['filename']):
-                    
-                    # Add current hologram info to trigger pipeline processing
-                    command_data['directory'] = self.current_display_info['directory']
-                    command_data['filename'] = self.current_display_info['filename']
-                    
-                    print(f"🔄 Parameter {name} changed, restarting pipeline for {self.current_display_info['filename']}")
-                
-                self.core_comm.send_command(CommandType.CHANGE_PARAMETER, command_data)
+                    print(f"Restarting full pipeline with updated parameters")
+                    command_data = {
+                        'parameters': self.ui.parameters,
+                        'directory': self.current_display_info['directory'],
+                        'filename': self.current_display_info['filename']
+                    }
+                    self.core_comm.send_command(CommandType.UPDATE_ALL_PARAMETERS, command_data)
+                else:
+                    # No hologram loaded yet - just update parameters
+                    command_data = {'parameters': self.ui.parameters}
+                    self.core_comm.send_command(CommandType.UPDATE_ALL_PARAMETERS, command_data)
                 
             else:
                 # En mode WAIT, mise à jour directe
@@ -475,8 +568,7 @@ class HoloTrackerController:
             filename = self.ui.hologram_combobox.get()
             
             # Nouveau workflow séparé: ENTER_TEST_MODE + ALLOCATE + optionnel PROCESS
-            print("🚀 Controller: ENTER_TEST_MODE - separate allocation")
-            
+
             # 1. Changement d'état
             self.core_comm.send_command(CommandType.ENTER_TEST_MODE, {})
             
@@ -492,7 +584,6 @@ class HoloTrackerController:
                     'directory': directory, 
                     'filename': filename
                 })
-                print(f"🚀 Controller: Processing {filename} after allocation")
 
     def on_exit_test_mode(self):
         if self.state == "TEST_MODE":
@@ -533,63 +624,26 @@ class HoloTrackerController:
             directory = self.ui.dir_text.get("1.0", tk.END).strip()
             if filename and directory:
                 try:
+                    # Get LOG checkbox state
+                    use_log = self.ui.display_log_var.get()
+                    
                     # Store current display info
                     self.current_display_info = {
                         'directory': directory,
                         'filename': filename,
                         'display_type': display_type,
                         'plane_number': plane_number,
-                        'additional_display': additional_display
+                        'additional_display': additional_display,
+                        'use_log': use_log
                     }
                     
                     # Update image display immediately
-                    result_image = self.core.get_display_image(directory, filename, display_type, plane_number, additional_display)
+                    result_image = self.core.get_display_image(directory, filename, display_type, plane_number, additional_display, use_log=use_log)
                     self.ui.display_hologram_image(result_image)
-                    self.update_status(f"Display updated to {display_type} - Plane {plane_number} - Additional: {additional_display}")
+                    log_text = " (LOG)" if use_log else ""
+                    self.update_status(f"Display updated to {display_type}{log_text} - Plane {plane_number} - Additional: {additional_display}")
                 except Exception as e:
                     self.update_status(f"Error updating display: {str(e)}")
-    
-    def get_pixel_info(self, x, y):
-        """Get pixel information (coordinates and value) for the current displayed image"""
-        try:
-            if not self.current_display_info['directory'] or not self.current_display_info['filename']:
-                return f"Pixel ({x}, {y}) - No image data available"
-                
-            # Get current display parameters
-            directory = self.current_display_info['directory']
-            filename = self.current_display_info['filename']
-            display_type = self.current_display_info['display_type']
-            plane_number = self.current_display_info['plane_number']
-            
-            # Get pixel value from core
-            try:
-                pixel_value = self.core.get_pixel_value(directory, filename, display_type, plane_number, x, y)
-                
-                # Convert to physical coordinates
-                physical_coords = self._get_physical_coordinates(x, y, display_type)
-                
-                # Format the information
-                if physical_coords:
-                    phys_x, phys_y = physical_coords
-                    coord_info = f"Pixel ({x}, {y}) | Physical ({phys_x:.2f}, {phys_y:.2f}) µm"
-                else:
-                    coord_info = f"Pixel ({x}, {y})"
-                    
-                # Format value based on type
-                if isinstance(pixel_value, complex):
-                    value_info = f"Value: {pixel_value.real:.3f} + {pixel_value.imag:.3f}i"
-                elif isinstance(pixel_value, (int, float)):
-                    value_info = f"Value: {pixel_value:.3f}"
-                else:
-                    value_info = f"Value: {pixel_value}"
-                    
-                return f"{coord_info} | {value_info}"
-                
-            except Exception as e:
-                return f"Pixel ({x}, {y}) - Error getting value: {str(e)}"
-                
-        except Exception as e:
-            return f"Pixel ({x}, {y}) - Error: {str(e)}"
     
     def get_pixel_info(self, x, y):
         """Get pixel information (coordinates and value) for the current displayed image"""
@@ -720,8 +774,18 @@ class HoloTrackerController:
     def _send_batch_commands_to_fifo(self, directory, files, display_results):
         """Send all batch commands to FIFO at once"""
         
-        # 1. Création CSV + état BATCH
+        # 1. Création CSV + état BATCH (seulement cette commande au début)
         self.core_comm.send_command(CommandType.ENTER_BATCH_MODE, {'directory': directory})
+        
+        # Stocker les informations pour continuer après succès ENTER_BATCH_MODE
+        self.pending_batch_directory = directory
+        self.pending_batch_files = files
+        self.pending_batch_display_results = display_results
+    
+    def _continue_batch_setup(self):
+        """Continue batch setup after successful ENTER_BATCH_MODE"""
+        directory = self.pending_batch_directory
+        files = self.pending_batch_files
         
         # 2. Allocation GPU
         self.core_comm.send_command(CommandType.ALLOCATE, {'parameters': self.ui.parameters})
@@ -736,29 +800,30 @@ class HoloTrackerController:
                 'filename': filename
             }
             self.core_comm.send_command(CommandType.PROCESS_HOLOGRAM_BATCH, command_data)
+        
+        # Nettoyer les variables temporaires
+        self.pending_batch_directory = None
+        self.pending_batch_files = None
+        self.pending_batch_display_results = None
 
     def _display_batch_results(self, result_data):
         """Affiche les résultats batch selon le DISPLAY sélectionné dynamiquement"""
         try:
-            print("🖼️  DEBUG: Starting batch results display...")
-            
+
             # Afficher les résultats (graphique 3D, timing, etc.)
-            print("🖼️  DEBUG: Calling ui.display_results()")
+
             self.ui.display_results(result_data)
             
             # Afficher l'image selon le DISPLAY actuel (peut changer pendant le batch)
             display_type = self.ui.display_combobox.get()
             plane_number_str = self.ui.plane_number_spinbox.get()
             plane_number = int(plane_number_str) if plane_number_str else 0
-            
-            print(f"🖼️  DEBUG: display_type={display_type}, plane_number={plane_number}")
-            
+
             directory = result_data.get('directory', '')
             filename = result_data.get('filename', '')
-            print(f"🖼️  DEBUG: directory={directory}, filename={filename}")
-            
+
             if directory and filename:
-                print(f"🖼️  DEBUG: Calling core.get_display_image({display_type}, {plane_number})")
+
                 additional_display = self._get_current_additional_display()
                 result_image = self.core.get_display_image(directory, filename, display_type, plane_number, additional_display)
                 
@@ -772,13 +837,8 @@ class HoloTrackerController:
                 }
                 
                 if result_image is not None:
-                    print("🖼️  DEBUG: Calling ui.display_hologram_image()")
                     self.ui.display_hologram_image(result_image)
-                else:
-                    print("❌ Controller: get_display_image returned None")
-            else:
-                print("❌ Controller: Missing directory or filename")
-                
+
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -839,34 +899,18 @@ class HoloTrackerController:
         if isinstance(data, dict) and 'name' in data and 'value' in data:
             self.on_parameter_changed(data['name'], data['value'])
 
-    def on_batch_process(self, data):
-        """Handle batch processing request - Legacy method"""
-        # Redirect to new batch system
-        directory = self.ui.dir_text.get("1.0", "end-1c").strip()
-        if directory:
-            self.on_enter_batch_mode(directory)
-        else:
-            self.update_status("Please select a directory for batch processing")
-
-    def on_cancel_batch(self):
-        """Handle cancel batch processing - Legacy method"""
-        # Redirect to new batch system
-        self.on_exit_batch_mode()
-
     def extract_object_slices(self, object_num, pos_x, pos_y, pos_z, vox_xy, vox_z):
         """Extract 3 slice views around an object from the reconstructed volume"""
-        print(f"🔍 Controller: extract_object_slices called for object #{object_num}")
-        print(f"🔍 Controller: Current state: {self.state}")
-        
+
         if self.state not in ["TEST", "TEST_MODE"]:
-            print(f"❌ Controller: Not in TEST mode (current: {self.state})")
+
             self.update_status("Object viewer only available in TEST mode")
             messagebox.showerror("Error", "Please enter TEST mode first")
             return
             
         # Check if we have volume data
         if not hasattr(self.core, 'd_volume_module') or self.core.d_volume_module is None:
-            print(f"❌ Controller: No volume data available")
+
             self.update_status("No volume data available")
             messagebox.showerror("Error", "No volume data available. Please process a hologram first.")
             return
@@ -878,26 +922,23 @@ class HoloTrackerController:
             'vox_xy': vox_xy,
             'vox_z': vox_z
         }
-        
-        print(f"🔍 Controller: Requesting slices for object #{object_num} at ({pos_x:.3f}, {pos_y:.3f}, {pos_z:.3f})")
+
         print(f"📐 Slice sizes: XY={vox_xy}x{vox_xy}, Z={vox_z}")
         
         self.core_comm.send_command(CommandType.EXTRACT_OBJECT_SLICES, command_data)
 
     def extract_object_slices_for_dialog(self, object_num, pos_x, pos_y, pos_z, vox_xy, vox_z, dialog):
         """Extract 3 slice views and display them in the provided dialog"""
-        print(f"🔍 Controller: extract_object_slices_for_dialog called for object #{object_num}")
-        print(f"🔍 Controller: Current state: {self.state}")
-        
+
         if self.state not in ["TEST", "TEST_MODE"]:
-            print(f"❌ Controller: Not in TEST mode (current: {self.state})")
+
             self.update_status("Object viewer only available in TEST mode")
             messagebox.showerror("Error", "Please enter TEST mode first")
             return
             
         # Check if we have volume data
         if not hasattr(self.core, 'd_volume_module') or self.core.d_volume_module is None:
-            print(f"❌ Controller: No volume data available")
+
             self.update_status("No volume data available")
             messagebox.showerror("Error", "No volume data available. Please process a hologram first.")
             return
@@ -913,16 +954,14 @@ class HoloTrackerController:
             'vox_z': vox_z,
             'display_in_dialog': True  # Flag to indicate dialog display
         }
-        
-        print(f"🔍 Controller: Requesting slices for dialog - object #{object_num} at ({pos_x:.3f}, {pos_y:.3f}, {pos_z:.3f})")
+
         print(f"📐 Slice sizes: XY={vox_xy}x{vox_xy}, Z={vox_z}")
         
         self.core_comm.send_command(CommandType.EXTRACT_OBJECT_SLICES, command_data)
 
     def start_mean_hologram_computation(self, directory, image_type, mean_type="arithmetic"):
         """Start mean hologram computation in a separate thread"""
-        print(f"🧮 Controller: Starting {mean_type} mean hologram computation in {directory} with type {image_type}")
-        
+
         def compute_in_thread():
             try:
                 self.update_status(f"Computing {mean_type} mean hologram...")
@@ -941,12 +980,10 @@ class HoloTrackerController:
                 # Update UI on completion
                 self.ui.root.after(0, lambda: self.update_status("Mean hologram computation completed"))
                 self.ui.root.after(0, lambda: messagebox.showinfo("Success", f"Mean hologram saved to: {mean_path}"))
-                
-                print(f"✅ Controller: Mean hologram computation completed: {mean_path}")
-                
+
             except Exception as e:
                 error_msg = f"Error computing mean hologram: {str(e)}"
-                print(f"❌ Controller: {error_msg}")
+
                 self.ui.root.after(0, lambda: self.update_status("Mean hologram computation failed"))
                 self.ui.root.after(0, lambda: messagebox.showerror("Error", error_msg))
         
@@ -987,13 +1024,13 @@ class HoloTrackerController:
             
             # Check that we are in TEST mode
             if self.state != "TEST_MODE":
-                print(f"❌ Focus analysis only available in TEST mode (current state: {self.state})")
+
                 return None
                 
             # Get current parameters
             current_params = self.core.get_parameters_dict()
             if not current_params:
-                print("❌ Unable to get current parameters")
+
                 return None
                 
             # Restart pipeline in TEST mode up to focus step
@@ -1008,7 +1045,7 @@ class HoloTrackerController:
                 time.sleep(0.1)
                 
             if self.state != "TEST_MODE":
-                print(f"❌ Pipeline restart failed (final state: {self.state})")
+
                 return None
                 
             # Launch analysis for each configuration
@@ -1016,9 +1053,7 @@ class HoloTrackerController:
             for config in configs:
                 focus_type = config['focus_type']
                 sum_size = config['sum_size']
-                
-                print(f"🔍 Analyzing {focus_type} with sum_size={sum_size} at position ({x_pos}, {y_pos})")
-                
+
                 # Call core focus analysis method
                 focus_values = self.core.analyze_focus_at_position(
                     x_pos, y_pos, focus_type, sum_size
@@ -1038,24 +1073,23 @@ class HoloTrackerController:
                     else:
                         results.append([])
                 else:
-                    print(f"❌ Analysis failed for {focus_type}")
+
                     results.append([])
-                    
-            print(f"✅ Focus analysis completed: {len(results)} configurations analyzed")
+
             return results
             
         except Exception as e:
-            print(f"❌ Error during focus analysis: {e}")
+
             return None
 
     def restart_test_mode_pipeline(self):
         """Restarts the pipeline in TEST mode up to the focus step"""
         try:
             if self.state != "TEST_MODE":
-                print("❌ Pipeline restart only available in TEST mode")
+
                 return False
                 
-            print("🔄 Restarting pipeline in TEST mode...")
+            print(" Restarting pipeline in TEST mode...")
             
             # Temporarily change state
             self.set_state("PROCESSING")
@@ -1070,7 +1104,7 @@ class HoloTrackerController:
             return True
             
         except Exception as e:
-            print(f"❌ Error during pipeline restart: {e}")
+
             self.set_state("TEST_MODE")
             return False
 
