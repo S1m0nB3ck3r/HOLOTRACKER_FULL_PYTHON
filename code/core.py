@@ -20,6 +20,9 @@ except ImportError as e:
     cp = None
     CUPY_AVAILABLE = False
 
+# Maximum number of objects that can be detected and displayed
+MAX_OBJECT_DETECTION = 500
+
 def stat_plane(data, label=""):
     """
     Debug function: compute and print statistics for a CuPy array
@@ -86,12 +89,7 @@ class HoloTrackerCore:
         self.d_mean_holo = None
         
         # Variables for results
-        self.current_threshold = None
         self.current_features = None
-        
-        # Variables for thresholding
-        self.threshold = None
-        self.last_nb_StdVar_threshold = None
         
         # Hologram and system parameters
         self.mean_hologram_image_path = ""
@@ -169,8 +167,7 @@ class HoloTrackerCore:
                                   'h_filtered_holo', 'd_filtered_holo', 'd_fft_holo', 
                                   'd_fft_holo_filtered', 'd_fft_holo_propag', 'd_holo_propag',
                                   'd_KERNEL', 'd_FFT_KERNEL', 'd_volume_module', 'd_bin_volume_focus',
-                                  'd_mean_holo', 'current_threshold', 'current_features',
-                                  'threshold', 'last_nb_StdVar_threshold']]
+                                  'd_mean_holo', 'current_features', 'threshold']]
         
         for attr in sorted(param_attrs):
             value = getattr(self, attr)
@@ -626,6 +623,10 @@ class HoloTrackerCore:
                 'error': 'Test mode not initialized (allocate must be called before processing)'
             }
             return "Error: Test mode not initialized"
+        
+        # Clear any previous results/errors at the start of each pipeline run
+        # This ensures we start with a clean state
+        self.results = {}
             
         # Print parameters for debugging
         self.print_parameters()
@@ -641,7 +642,6 @@ class HoloTrackerCore:
             
             # Load raw hologram into h_raw_holo
             self.h_raw_holo[:] = read_image(filepath, cam_nb_pix_X, cam_nb_pix_Y)
-            stat_plane(self.h_raw_holo, label="h_raw_holo after loading")
             
             # 2. Clean hologram (remove mean according to parameter and type)
             remove_mean = self.remove_mean
@@ -653,28 +653,20 @@ class HoloTrackerCore:
                 
                 # Debug info about mean hologram
                 if self.h_mean_holo is not None:
-                    mean_min, mean_max = self.h_mean_holo.min(), self.h_mean_holo.max()
+                    pass
 
                 # Apply cleaning based on type
                 if cleaning_type == "subtraction":
-                    input_min, input_max = self.h_raw_holo.min(), self.h_raw_holo.max()
-                    mean_min, mean_max = self.h_mean_holo.min(), self.h_mean_holo.max()
                     
                     self.h_cleaned_holo = self.h_raw_holo - self.h_mean_holo
-                    cleaned_min_before = self.h_cleaned_holo.min()
                     self.h_cleaned_holo = self.h_cleaned_holo - self.h_cleaned_holo.min()  # Ensure non-negative
-                    cleaned_min_after, cleaned_max_after = self.h_cleaned_holo.min(), self.h_cleaned_holo.max()
 
                 else:  # division (default)
-                    input_min, input_max = self.h_raw_holo.min(), self.h_raw_holo.max()
-                    mean_min, mean_max = self.h_mean_holo.min(), self.h_mean_holo.max()
                     
                     self.h_cleaned_holo = self.h_raw_holo.astype(np.float64) / (self.h_mean_holo + 1e-10)
                     self.h_cleaned_holo = np.power(self.h_cleaned_holo, 0.8).astype(np.float32)  # Limit extreme values
-                    cleaned_min, cleaned_max = self.h_cleaned_holo.min(), self.h_cleaned_holo.max()
 
             else:
-
                 self.h_cleaned_holo[:] = self.h_raw_holo
             
             # Transfer cleaned hologram to GPU - reuse pre-allocated array
@@ -705,17 +697,13 @@ class HoloTrackerCore:
 
             propag_start = time.perf_counter()
 
-            stat_plane(self.d_holo, "d_HOLO  before propagation")
-
             propag.volume_propag_angular_spectrum_to_module(
                 self.d_holo, self.d_fft_holo, self.d_fft_holo_filtered,self.d_KERNEL, 
                 self.d_filtered_holo, self.d_fft_holo_propag, self.d_holo_propag, 
                 self.d_volume_module, medium_wavelength, objective_magnification, 
                 pixel_size, cam_nb_pix_X, cam_nb_pix_Y, distance_ini, dz, nb_plane, f_pix_min, f_pix_max)
             
-            stat_plane(self.d_holo, "d_HOLO  after propagation")
-            stat_plane(self.d_volume_module, "d_volume before focus")
-            
+          
             # Copy filtered hologram to CPU for display purposes
             if self.d_filtered_holo is not None:
                 self.h_filtered_holo[:] = cp.asnumpy(self.d_filtered_holo)
@@ -743,8 +731,6 @@ class HoloTrackerCore:
             # print(f" Core: Applying focus type: {focus_type_str} (enum: {focus_type_enum})")
             focus.focus(self.d_volume_module, self.d_volume_module, sum_size, focus_type_enum)
             
-            stat_plane(self.d_volume_module, "d_volume after focus")
-
             t3 = time.perf_counter()
             t_focus = t3 - focus_start
             
@@ -753,35 +739,21 @@ class HoloTrackerCore:
             nb_StdVar_threshold = float(self.nb_StdVar_threshold)
             n_connectivity = int(self.connectivity)
             
-            # NEW LOGIC: Threshold recalculation based on mode
-            # Base conditions (always needed)
-            base_need = (not self.threshold or 
-                        not self.last_nb_StdVar_threshold or
-                        self.last_nb_StdVar_threshold != nb_StdVar_threshold)
-            
-            # Mode-specific logic
+            # Determine if threshold needs to be recalculated
             if self.mode == 'TEST':
                 # TEST mode: always recalculate threshold
                 need_recalc = True
             elif self.mode == 'BATCH':
-                # BATCH mode: depends on batch_threshold setting
-                batch_recalc = self.batch_threshold == "compute on each hologram"
-                if self.batch_threshold == "compute on 1st hologram":
-                    # Only on first hologram in batch
-                    need_recalc = base_need or not self.batch_first_hologram_done
-                else:
-                    # On each hologram (batch_recalc = True)
-                    need_recalc = base_need or batch_recalc
+                # BATCH mode: recalculate on first hologram only
+                need_recalc = not self.batch_first_hologram_done
             else:
-                # IDLE or other modes: use base logic
-                need_recalc = base_need
+                # IDLE mode: never recalculate (not used in practice)
+                need_recalc = False
             
             if need_recalc:
-
                 self.threshold = calc_threshold(self.d_volume_module, nb_StdVar_threshold)
-                self.last_nb_StdVar_threshold = nb_StdVar_threshold
-                # If we computed for the first hologram in batch, mark it done
-                if self.mode == 'BATCH' and self.batch_threshold == "compute on 1st hologram":
+                # Mark first hologram as done in batch mode
+                if self.mode == 'BATCH':
                     self.batch_first_hologram_done = True
 
             # CCL3D
@@ -808,9 +780,7 @@ class HoloTrackerCore:
                 max_voxel = int(self.max_voxel)
 
                 if min_voxel != 0 or max_voxel != 0:
-                    features_before_filter = len(features) if features is not None else 0
                     features = CCL_filter(features, min_voxel, max_voxel)
-                    features_after_filter = len(features) if features is not None else 0
 
             else:
                 features = np.array([])
@@ -829,7 +799,25 @@ class HoloTrackerCore:
             # print(f'total iteration time: {t_total:.6f}')
             # print(f'---')
             
-            # Store results
+            # Check if number of objects exceeds maximum
+            if number_of_labels > MAX_OBJECT_DETECTION:
+                # Store error result - clear any previous results first
+                self.results = {
+                    'number_of_objects': number_of_labels,
+                    'features': np.array([]),  # Empty features array - objects won't be displayed
+                    'processing_times': {
+                        'preprocessing': t_preprocess,
+                        'propagation': t_propag,
+                        'focus': t_focus,
+                        'ccl': t_ccl,
+                        'cca': t_cca,
+                        'total_processing': t_total
+                    },
+                    'error': f'MAX OBJECTS DETECTION ({MAX_OBJECT_DETECTION}). Please increase threshold value'
+                }
+                return f"Error: Too many objects detected ({number_of_labels} > {MAX_OBJECT_DETECTION})"
+            
+            # Store results (normal case) - clear any previous results first to remove old 'error' key
             self.results = {
                 'number_of_objects': number_of_labels,
                 'features': features,
@@ -841,6 +829,7 @@ class HoloTrackerCore:
                     'cca': t_cca,
                     'total_processing': t_total
                 }
+                # Note: 'error' key is explicitly NOT included here - this ensures old errors are cleared
             }
 
             if number_of_labels > 0:
@@ -865,6 +854,14 @@ class HoloTrackerCore:
             # Add processing times only if available to avoid KeyError
             if self.results and isinstance(self.results, dict) and 'processing_times' in self.results:
                 result_data['processing_times'] = self.results['processing_times']
+            
+            # Check if there's an error (e.g., MAX_OBJECT_DETECTION exceeded)
+            if self.results and isinstance(self.results, dict) and 'error' in self.results:
+                result_data['error'] = self.results['error']
+                # Still include the count even if there's an error
+                if 'number_of_objects' in self.results:
+                    result_data['count'] = self.results['number_of_objects']
+                return result_data
             
             # Add detection results if available
             if self.results and 'features' in self.results and self.results['features'] is not None:

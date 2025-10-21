@@ -30,6 +30,10 @@ class HoloTrackerController:
         self.pending_batch_files = None
         self.pending_batch_display_results = None
         
+        # Error state tracking
+        self.has_error = False
+        self.error_message = ""
+        
         # Variables for current image display
         self.current_display_info = {
             'directory': None,
@@ -48,8 +52,22 @@ class HoloTrackerController:
         
         self.ui.update_buttons_state(self.state)
 
-    def update_status(self, text):
-        self.ui.status_var.set(f"[{self.state}] {text}")
+    def update_status(self, text, is_error=False):
+        """Update status bar. Error messages have priority and won't be overwritten by normal messages."""
+        if is_error:
+            # Set error state
+            self.has_error = True
+            self.error_message = text
+            self.ui.status_var.set(f"[{self.state}] {text}")
+        elif not self.has_error:
+            # Only update if there's no error currently displayed
+            self.ui.status_var.set(f"[{self.state}] {text}")
+        # else: error is displayed, don't overwrite it with normal message
+    
+    def clear_error(self):
+        """Clear the error state"""
+        self.has_error = False
+        self.error_message = ""
 
     def set_state(self, new_state):
         self.state = new_state
@@ -94,7 +112,14 @@ class HoloTrackerController:
                 # We have complete results (allocation + pipeline)
                 num_objects = result.data.get('count', 0)
                 self.last_object_count = num_objects  # Store for future parameter updates
-                self.update_status(f"Test mode activated - Found {num_objects} objects")
+                
+                # Check if there's an error (MAX_OBJECT_DETECTION exceeded)
+                if 'error' in result.data:
+                    self.update_status(f"Error: {result.data['error']}", is_error=True)
+                else:
+                    self.clear_error()  # Clear any previous error
+                    self.update_status(f"Test mode activated - Found {num_objects} objects")
+                
                 try:
 
                     self.ui.display_results(result.data)
@@ -166,13 +191,18 @@ class HoloTrackerController:
             
             num_objects = result.data.get('count', 0)
             self.last_object_count = num_objects  # Store for future parameter updates
-            self.update_status(f"Hologram processed - Found {num_objects} objects")
+            
+            # Check if there's an error (MAX_OBJECT_DETECTION exceeded)
+            if 'error' in result.data:
+                self.update_status(f"Error: {result.data['error']}", is_error=True)
+            else:
+                self.clear_error()  # Clear any previous error
+                self.update_status(f"Hologram processed - Found {num_objects} objects")
             
         elif result.command_type == CommandType.CHANGE_PARAMETER:
-            if result.data.get('reallocation'):
-                self.update_status("Parameter changed - Reallocation completed")
-            else:
-                self.update_status("Parameter updated")
+            # Suppression des messages "Parameter updated" - pas utiles pour l'utilisateur
+            # Le retraitement automatique affichera le résultat
+            pass
             
             # Auto-reprocess current hologram after any parameter change
             directory = self.ui.dir_text.get("1.0", "end-1c").strip()
@@ -211,13 +241,18 @@ class HoloTrackerController:
                 num_objects = result.data.get('count', 0)
                 self.last_object_count = num_objects  # Store for future parameter updates
                 print(f"[DEBUG] Full reprocessing - Found {num_objects} objects")
-                self.update_status(f"Parameters updated - Hologram reprocessed - Found {num_objects} objects")
-            else:
-                # Just parameter update without reprocessing - show last object count if available
-                if hasattr(self, 'last_object_count'):
-                    self.update_status(f"Parameters updated - {self.last_object_count} objects (from last processing)")
+                
+                # Check if there's an error (MAX_OBJECT_DETECTION exceeded)
+                if 'error' in result.data:
+                    self.update_status(f"Error: {result.data['error']}", is_error=True)
                 else:
-                    self.update_status("Parameters updated")
+                    self.clear_error()  # Clear any previous error
+                    # Suppression du message verbeux "Parameters updated - Hologram reprocessed - Found N objects"
+                    # Le comptage sera visible dans les autres onglets
+                    pass
+            else:
+                # Just parameter update without reprocessing - no status message needed
+                pass
             
             # ALWAYS refresh image display after parameter update (whether reprocessed or not)
             # This handles changes to display parameters (display_type, plane_number, use_log, etc.)
@@ -426,10 +461,14 @@ class HoloTrackerController:
                         'directory': self.current_display_info['directory'],
                         'filename': self.current_display_info['filename']
                     }
+                    # Clear previous error before restarting pipeline
+                    self.clear_error()
                     self.core_comm.send_command(CommandType.UPDATE_ALL_PARAMETERS, command_data)
                 else:
                     # No hologram loaded yet - just update parameters
                     command_data = {'parameters': self.ui.parameters}
+                    # Clear previous error before updating parameters (may trigger processing)
+                    self.clear_error()
                     self.core_comm.send_command(CommandType.UPDATE_ALL_PARAMETERS, command_data)
                 
             else:
@@ -558,6 +597,7 @@ class HoloTrackerController:
 
     def on_enter_test_mode(self):
         if self.state == "WAIT":
+            self.clear_error()  # Clear any previous error when entering test mode
             self.update_status("Entering test mode...")
             
             # Préparer les paramètres depuis l'UI
@@ -580,6 +620,8 @@ class HoloTrackerController:
             
             # 4. Traitement (si hologramme disponible)
             if directory and filename:
+                # Clear any previous error message before starting new pipeline
+                self.clear_error()
                 self.core_comm.send_command(CommandType.PROCESS_HOLOGRAM, {
                     'directory': directory, 
                     'filename': filename
@@ -587,6 +629,7 @@ class HoloTrackerController:
 
     def on_exit_test_mode(self):
         if self.state == "TEST_MODE":
+            self.clear_error()  # Clear error when exiting test mode
             self.update_status("Exiting test mode...")
             
             # Envoyer commande de sortie du mode test au Core
@@ -597,6 +640,7 @@ class HoloTrackerController:
 
     def on_hologram_selected(self, directory, filename):
         if self.state == "TEST_MODE":
+            self.clear_error()  # Clear error when selecting a new hologram
             self.update_status(f"Processing {filename}...")
             
             # Envoyer commande de traitement d'hologramme au Core
@@ -857,7 +901,8 @@ class HoloTrackerController:
         """Process a single hologram in batch mode"""
         if self.state == "BATCH_MODE":
             self.update_status(f"Batch processing {filename}...")
-            
+            # Clear any previous error message before starting new pipeline
+            self.clear_error()
             # Envoyer commande de traitement d'hologramme batch au Core
             self.core_comm.send_command(
                 CommandType.PROCESS_HOLOGRAM_BATCH,

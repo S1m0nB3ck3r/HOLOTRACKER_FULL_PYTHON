@@ -1,5 +1,5 @@
 {
-    "mean_hologram_image_path": "C:/TRAVAIL/RepositoriesGithub/HOLOTRACKER_FULL_PYTHON/FILM REF 2\\mean\\mean_log.tif",
+    "mean_hologram_image_path": "C:/TRAVAIL/RepositoriesGithub/HOLOTRACKER_FULL_PYTHON/Film REF/mean/mean_log.tif",
     "wavelength": "660e-9",
     "medium_optical_index": "1.33",
     "holo_size_x": "1024",
@@ -16,11 +16,11 @@
     "remove_mean": true,
     "cleaning_type": "division",
     "batch_threshold": "compute on 1st hologram",
-    "nb_StdVar_threshold": "14",
+    "nb_StdVar_threshold": "15",
     "connectivity": "26",
     "min_voxel": "10",
     "max_voxel": "0",
-    "holograms_directory": "C:/TRAVAIL/RepositoriesGithub/HOLOTRACKER_FULL_PYTHON/FILM REF 2",
+    "holograms_directory": "C:/TRAVAIL/RepositoriesGithub/HOLOTRACKER_FULL_PYTHON/Film REF",
     "image_type": "BMP",
     "additional_display": "Segmentation + Centroid"
 }
