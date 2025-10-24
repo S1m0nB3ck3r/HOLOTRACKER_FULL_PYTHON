@@ -340,17 +340,13 @@ class CoreCommunicator:
                     # Écrire TOUS les objets détectés pour cet hologramme
                     with open(self.batch_csv_path, 'a', newline='', encoding='utf-8') as f:
                         for object_index, feature in enumerate(features, start=1):
-                            x = feature[1]  # baryX 
-                            y = feature[2]  # baryY  
-                            z = feature[3]  # baryZ
+                            # features are produced by CCL/CCA in meters already (baryX/baryY/baryZ)
+                            x_m = float(feature[1])  # baryX in meters
+                            y_m = float(feature[2])  # baryY in meters
+                            z_m = float(feature[3])  # baryZ in meters
                             nb_voxel = int(feature[4])  # nb_pix
-                            
-                            # Convertir les positions en mètres (supposant qu'elles sont déjà en µm)
-                            x_m = x * 1e-6  # µm vers m
-                            y_m = y * 1e-6  # µm vers m  
-                            z_m = z * 1e-6  # µm vers m
-                            
-                            # Écrire une ligne pour chaque objet
+
+                            # Write a line for each object using meters (header declares '(m)')
                             f.write(f"{self.batch_hologram_counter},{object_index},{x_m:.8e},{y_m:.8e},{z_m:.8e},{nb_voxel}\n")
                     
                     csv_written = True

@@ -867,21 +867,37 @@ class HoloTrackerController:
             filename = result_data.get('filename', '')
 
             if directory and filename:
-
                 additional_display = self._get_current_additional_display()
-                result_image = self.core.get_display_image(directory, filename, display_type, plane_number, additional_display)
-                
-                # Store current display info
-                self.current_display_info = {
-                    'directory': directory,
-                    'filename': filename,
-                    'display_type': display_type,
-                    'plane_number': plane_number,
-                    'additional_display': additional_display
-                }
-                
-                if result_image is not None:
-                    self.ui.display_hologram_image(result_image)
+
+                # Use the features from the batch result for overlay drawing.
+                # Temporarily inject result.data into core.results so get_display_image
+                # (which uses self.results) draws centroids consistent with the shown CSV/3D plot.
+                prev_results = getattr(self.core, 'results', None)
+                try:
+                    # Build a minimal results dict expected by core.get_display_image overlays
+                    temp_results = {
+                        'number_of_objects': result_data.get('count', 0),
+                        'features': result_data.get('features', None),
+                        'processing_times': result_data.get('processing_times', {})
+                    }
+                    self.core.results = temp_results
+
+                    result_image = self.core.get_display_image(directory, filename, display_type, plane_number, additional_display)
+
+                    # Store current display info
+                    self.current_display_info = {
+                        'directory': directory,
+                        'filename': filename,
+                        'display_type': display_type,
+                        'plane_number': plane_number,
+                        'additional_display': additional_display
+                    }
+
+                    if result_image is not None:
+                        self.ui.display_hologram_image(result_image)
+                finally:
+                    # Restore previous core.results to avoid side-effects
+                    self.core.results = prev_results
 
         except Exception as e:
             import traceback

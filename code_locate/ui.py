@@ -138,52 +138,65 @@ class HoloTrackerApp:
         self.init_actions_tab()
 
     def init_path_tab(self):
-        # Holograms directory
-        ttk.Label(self.tab_path, text="Holograms directory:").grid(row=0, column=0, sticky="w", pady=5)
-        dir_frame = ttk.Frame(self.tab_path)
-        dir_frame.grid(row=0, column=1, sticky="ew", pady=5)
+        # Holograms directory label
+        ttk.Label(self.tab_path, text="Holograms directory:").pack(anchor="w", padx=10, pady=(10, 2))
+        
+        # Holograms directory entry and browse button in horizontal frame
+        dir_row = ttk.Frame(self.tab_path)
+        dir_row.pack(fill="x", padx=10, pady=(0, 10))
+        
+        dir_frame = ttk.Frame(dir_row)
+        dir_frame.pack(side="left", fill="x", expand=True)
         self.dir_text = tk.Text(dir_frame, height=1, width=50, wrap=tk.NONE)
-        self.dir_text.grid(row=0, column=0, sticky="ew")
+        self.dir_text.pack(fill="x", expand=True)
         dir_scroll = ttk.Scrollbar(dir_frame, orient="horizontal", command=self.dir_text.xview)
-        dir_scroll.grid(row=1, column=0, sticky="ew")
+        dir_scroll.pack(fill="x")
         self.dir_text.configure(xscrollcommand=dir_scroll.set)
-        self.browse_button = ttk.Button(self.tab_path, text=format_button_text("Browse", "folder"), command=self.browse_directory, bootstyle="info")
-        self.browse_button.grid(row=0, column=2, padx=5, pady=5)
+        
+        self.browse_button = ttk.Button(dir_row, text=format_button_text("Browse", "folder"), command=self.browse_directory, bootstyle="info")
+        self.browse_button.pack(side="left", padx=(5, 0))
 
-        # Image type
-        ttk.Label(self.tab_path, text="Image type:").grid(row=1, column=0, sticky="w", pady=5)
+        # Image type label
+        ttk.Label(self.tab_path, text="Image type:").pack(anchor="w", padx=10, pady=(10, 2))
+        
+        # Image type combobox
         self.image_type_var = tk.StringVar(value="TIF")
         self.image_type_combobox = ttk.Combobox(
             self.tab_path,
             textvariable=self.image_type_var,
             values=["BMP", "TIF", "JPG", "PNG"],
             state="readonly",
-            width=10
+            width=15
         )
-        self.image_type_combobox.grid(row=1, column=1, sticky="ew", pady=5)
+        self.image_type_combobox.pack(anchor="w", padx=10, pady=(0, 10))
         self.image_type_combobox.bind("<<ComboboxSelected>>", lambda e: self.on_parameter_changed("image_type", self.image_type_var.get()))
 
-        # Mean hologram image path
-        ttk.Label(self.tab_path, text="Mean hologram image path:").grid(row=2, column=0, sticky="w", pady=5)
-        ttk.Label(self.tab_path, text="32bits TIF image", font=("TkDefaultFont", 8), foreground="gray").grid(row=2, column=0, sticky="w", padx=(20, 0), pady=(35, 0))
-        mean_frame = ttk.Frame(self.tab_path)
-        mean_frame.grid(row=2, column=1, sticky="ew", pady=5)
+        # Mean hologram image path label and subtitle
+        ttk.Label(self.tab_path, text="Mean hologram image path:").pack(anchor="w", padx=10, pady=(10, 2))
+        ttk.Label(self.tab_path, text="32bits TIF image", font=("TkDefaultFont", 8), foreground="gray").pack(anchor="w", padx=10)
+        
+        # Mean hologram path entry and browse button in horizontal frame
+        mean_row = ttk.Frame(self.tab_path)
+        mean_row.pack(fill="x", padx=10, pady=(5, 10))
+        
+        mean_frame = ttk.Frame(mean_row)
+        mean_frame.pack(side="left", fill="x", expand=True)
         self.mean_image_text = tk.Text(mean_frame, height=1, width=50, wrap=tk.NONE)
-        self.mean_image_text.grid(row=0, column=0, sticky="ew")
+        self.mean_image_text.pack(fill="x", expand=True)
         mean_scroll = ttk.Scrollbar(mean_frame, orient="horizontal", command=self.mean_image_text.xview)
-        mean_scroll.grid(row=1, column=0, sticky="ew")
+        mean_scroll.pack(fill="x")
         self.mean_image_text.configure(xscrollcommand=mean_scroll.set)
         
         # Add bindings to detect changes in mean hologram path
         self.mean_image_text.bind("<FocusOut>", lambda e: self.on_mean_path_changed())
         self.mean_image_text.bind("<KeyRelease>", lambda e: self.on_mean_path_changed())
         
-        self.browse_mean_button = ttk.Button(self.tab_path, text=format_button_text("Browse", "file"), command=self.browse_mean_image, bootstyle="info")
-        self.browse_mean_button.grid(row=2, column=2, padx=5, pady=5)
+        self.browse_mean_button = ttk.Button(mean_row, text=format_button_text("Browse", "file"), command=self.browse_mean_image, bootstyle="info")
+        self.browse_mean_button.pack(side="left", padx=(5, 0))
 
         # Mean hologram computation button
         self.compute_mean_button = ttk.Button(self.tab_path, text=format_button_text("Mean hologram computation", "compute"), command=self.compute_mean_hologram, bootstyle="primary")
-        self.compute_mean_button.grid(row=3, column=0, columnspan=3, pady=10)
+        self.compute_mean_button.pack(fill="x", padx=10, pady=(10, 20))
         
         # Add tooltip to explain mean hologram computation
         ToolTip(self.compute_mean_button, 
@@ -317,32 +330,62 @@ class HoloTrackerApp:
         dialog.geometry(f"+{x}+{y}")
 
     def init_parameters_tab(self):
-        holo_frame = ttk.LabelFrame(self.tab_parameters, text="Holo parameters")
-        holo_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        # Create a canvas with scrollbar for all parameters
+        canvas = tk.Canvas(self.tab_parameters, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(self.tab_parameters, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        # Enable mouse wheel scrolling
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        
+        # Holo parameters frame
+        holo_frame = ttk.LabelFrame(scrollable_frame, text="Holo parameters", padding=(5, 2))
+        holo_frame.pack(fill="x", padx=10, pady=(5, 2))
         self.wavelength_entry = self._add_label_entry(holo_frame, "wavelength (m):", 0)
         self.medium_optical_index_entry = self._add_label_entry(holo_frame, "medium optical index:", 1)
         self.holo_size_x_entry = self._add_label_entry(holo_frame, "Holo size X (pix):", 2)
         self.holo_size_y_entry = self._add_label_entry(holo_frame, "Holo size Y (pix):", 3)
         self.pixel_size_entry = self._add_label_entry(holo_frame, "pixel size (m):", 4)
         self.objective_magnification_entry = self._add_label_entry(holo_frame, "objective magnification:", 5)
-        analyse_frame = ttk.LabelFrame(self.tab_parameters, text="Analyse parameters")
-        analyse_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
-        propagation_frame = ttk.LabelFrame(analyse_frame, text="propagation")
-        propagation_frame.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
+        
+        # Analyse parameters section
+        analyse_label = ttk.Label(scrollable_frame, text="Analyse parameters", font=("Arial", 9, "bold"))
+        analyse_label.pack(fill="x", padx=10, pady=(5, 2))
+        
+        # propagation frame
+        propagation_frame = ttk.LabelFrame(scrollable_frame, text="propagation", padding=(5, 2))
+        propagation_frame.pack(fill="x", padx=10, pady=2)
         self.distance_entry = self._add_label_entry(propagation_frame, "distance ini (m):", 0)
         self.number_of_planes_entry = self._add_label_entry(propagation_frame, "number of planes:", 1)
         self.number_of_planes_entry.bind("<KeyRelease>", lambda e: self.update_plane_number_range())
         self.number_of_planes_entry.bind("<FocusOut>", lambda e: self.update_plane_number_range())
         self.step_entry = self._add_label_entry(propagation_frame, "step (m):", 2)
-        fourier_frame = ttk.LabelFrame(analyse_frame, text="Fourier BP filter (pix)")
-        fourier_frame.grid(row=0, column=1, padx=5, pady=5, sticky="nsew")
+        
+        # Fourier BP filter frame
+        fourier_frame = ttk.LabelFrame(scrollable_frame, text="Fourier BP filter (pix)", padding=(5, 2))
+        fourier_frame.pack(fill="x", padx=10, pady=2)
         self.high_pass_entry = self._add_label_entry(fourier_frame, "High pass (0=none) (pix):", 0, IntegerEntry)
         self.low_pass_entry = self._add_label_entry(fourier_frame, "Low Pass (0=none) (pix):", 1, IntegerEntry)
-        focus_frame = ttk.LabelFrame(analyse_frame, text="Focus")
-        focus_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
-        ttk.Label(focus_frame, text="Focus type:").grid(row=0, column=0, sticky="w")
+        
+        # Focus frame
+        focus_frame = ttk.LabelFrame(scrollable_frame, text="Focus", padding=(5, 2))
+        focus_frame.pack(fill="x", padx=10, pady=2)
+        ttk.Label(focus_frame, text="Focus type:").grid(row=0, column=0, sticky="w", pady=1)
         self.focus_type_combobox = ttk.Combobox(focus_frame, values=["SUM_OF_INTENSITY", "SUM_OF_LAPLACIAN", "SUM_OF_VARIANCE", "TENEGRAD", "SUM_OF_GRADIENT", "MEAN_ALL", "MEAN_LOG_ALL"], width=25)
-        self.focus_type_combobox.grid(row=0, column=1, sticky="w")
+        self.focus_type_combobox.grid(row=0, column=1, sticky="w", pady=1)
         self.focus_type_combobox.last_value = None
         
         def on_focus_type_change(event):
@@ -353,23 +396,23 @@ class HoloTrackerApp:
         
         self.focus_type_combobox.bind("<<ComboboxSelected>>", on_focus_type_change)
         self.sum_size_entry = OddIntegerEntry(focus_frame, width=10)
-        ttk.Label(focus_frame, text="Sum size:").grid(row=1, column=0, sticky="w")
-        self.sum_size_entry.grid(row=1, column=1, sticky="w")
+        ttk.Label(focus_frame, text="Sum size:").grid(row=1, column=0, sticky="w", pady=1)
+        self.sum_size_entry.grid(row=1, column=1, sticky="w", pady=1)
         self.sum_size_entry.bind("<FocusOut>", lambda e: self.on_parameter_changed("sum_size", self.sum_size_entry.get()))
         self.sum_size_entry.bind("<Return>", lambda e: self.on_parameter_changed("sum_size", self.sum_size_entry.get()))
         
-        # Cleaning section between Focus and CCL parameters
-        cleaning_frame = ttk.LabelFrame(analyse_frame, text="Cleaning")
-        cleaning_frame.grid(row=2, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        # Cleaning frame
+        cleaning_frame = ttk.LabelFrame(scrollable_frame, text="Cleaning", padding=(5, 2))
+        cleaning_frame.pack(fill="x", padx=10, pady=2)
         
-        ttk.Label(cleaning_frame, text="Remove mean Hologram:").grid(row=0, column=0, sticky="w")
+        ttk.Label(cleaning_frame, text="Remove mean Hologram:").grid(row=0, column=0, sticky="w", pady=1)
         self.remove_mean_check = ttk.Checkbutton(cleaning_frame, text="Off/On", command=self.on_remove_mean_changed)
-        self.remove_mean_check.grid(row=0, column=1, sticky="w")
+        self.remove_mean_check.grid(row=0, column=1, sticky="w", pady=1)
         self.remove_mean_check.last_value = None
         
-        ttk.Label(cleaning_frame, text="Cleaning type:").grid(row=1, column=0, sticky="w")
+        ttk.Label(cleaning_frame, text="Cleaning type:").grid(row=1, column=0, sticky="w", pady=1)
         self.type_cleaning_combobox = ttk.Combobox(cleaning_frame, values=["subtraction", "division"], width=15)
-        self.type_cleaning_combobox.grid(row=1, column=1, sticky="w")
+        self.type_cleaning_combobox.grid(row=1, column=1, sticky="w", pady=1)
         self.type_cleaning_combobox.set("division")  # Default value
         self.type_cleaning_combobox.last_value = None
         
@@ -381,14 +424,15 @@ class HoloTrackerApp:
         
         self.type_cleaning_combobox.bind("<<ComboboxSelected>>", on_type_cleaning_change)
         
-        ccl_frame = ttk.LabelFrame(analyse_frame, text="CCL parameters")
-        ccl_frame.grid(row=3, column=0, columnspan=2, padx=5, pady=5, sticky="nsew")
+        # CCL parameters frame
+        ccl_frame = ttk.LabelFrame(scrollable_frame, text="CCL parameters", padding=(5, 2))
+        ccl_frame.pack(fill="x", padx=10, pady=(2, 5))
         self.threshold_entry = self._add_label_entry(ccl_frame, "Threshold (N x Standard deviation):", 0, ScientificFloatEntry)
         
         # Move batch threshold combobox under Threshold in CCL parameters
-        ttk.Label(ccl_frame, text="Batch threshold:").grid(row=1, column=0, sticky="w")
+        ttk.Label(ccl_frame, text="Batch threshold:").grid(row=1, column=0, sticky="w", pady=1)
         self.batch_threshold_combobox = ttk.Combobox(ccl_frame, values=["compute on 1st hologram", "compute on each hologram"], width=25)
-        self.batch_threshold_combobox.grid(row=1, column=1, sticky="w")
+        self.batch_threshold_combobox.grid(row=1, column=1, sticky="w", pady=1)
         self.batch_threshold_combobox.set("compute on 1st hologram")  # Default value
         self.batch_threshold_combobox.last_value = None
         
@@ -400,9 +444,9 @@ class HoloTrackerApp:
         
         self.batch_threshold_combobox.bind("<<ComboboxSelected>>", on_batch_threshold_change)
         
-        ttk.Label(ccl_frame, text="Connectivity:").grid(row=2, column=0, sticky="w")
+        ttk.Label(ccl_frame, text="Connectivity:").grid(row=2, column=0, sticky="w", pady=1)
         self.connectivity_combobox = ttk.Combobox(ccl_frame, values=["6", "18", "26"], width=10)
-        self.connectivity_combobox.grid(row=2, column=1, sticky="w")
+        self.connectivity_combobox.grid(row=2, column=1, sticky="w", pady=1)
         self.connectivity_combobox.last_value = None
         
         def on_connectivity_change(event):
@@ -416,9 +460,9 @@ class HoloTrackerApp:
         self.max_voxel_entry = self._add_label_entry(ccl_frame, "max voxel:", 4, IntegerEntry)
 
     def _add_label_entry(self, parent, text, row, entry_class=ScientificFloatEntry):
-        ttk.Label(parent, text=text).grid(row=row, column=0, sticky="w")
+        ttk.Label(parent, text=text).grid(row=row, column=0, sticky="w", pady=1)
         entry = entry_class(parent, width=10)
-        entry.grid(row=row, column=1, sticky="w")
+        entry.grid(row=row, column=1, sticky="w", pady=1)
         
         # Map UI label names to parameter names used in core
         param_name_map = {
@@ -505,56 +549,74 @@ class HoloTrackerApp:
             "XZ_MAX_PROJECTION",
             "YZ_MAX_PROJECTION"
         ]
-        ttk.Label(self.tab_actions, text="Display:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
-        self.display_combobox = ttk.Combobox(self.tab_actions, values=display_options, width=20)
-        self.display_combobox.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        
+        # Display label
+        ttk.Label(self.tab_actions, text="Display:").pack(anchor="w", padx=10, pady=(10, 2))
+        
+        # Display combobox and LOG checkbox in horizontal frame
+        display_row = ttk.Frame(self.tab_actions)
+        display_row.pack(fill="x", padx=10, pady=(0, 10))
+        
+        self.display_combobox = ttk.Combobox(display_row, values=display_options, width=30)
+        self.display_combobox.pack(side="left", fill="x", expand=True)
         self.display_combobox.last_value = None
         self.display_combobox.bind("<<ComboboxSelected>>", self.on_display_changed)
         
-        # LOG checkbox next to Display
         self.display_log_var = tk.BooleanVar(value=False)
-        self.display_log_checkbox = ttk.Checkbutton(self.tab_actions, text="LOG", variable=self.display_log_var, command=self.on_display_log_changed)
-        self.display_log_checkbox.grid(row=0, column=2, sticky="w", padx=5, pady=5)
+        self.display_log_checkbox = ttk.Checkbutton(display_row, text="LOG", variable=self.display_log_var, command=self.on_display_log_changed)
+        self.display_log_checkbox.pack(side="left", padx=(10, 0))
         
-        # Additional display options (moved between Display and Plane number)
+        # Additional display
+        ttk.Label(self.tab_actions, text="Additional display:").pack(anchor="w", padx=10, pady=(10, 2))
+        
         additional_display_options = ["None", "Centroid positions", "Segmentation", "Segmentation + Centroid"]
-        ttk.Label(self.tab_actions, text="Additional display:").grid(row=1, column=0, sticky="w", padx=5, pady=5)
-        self.additional_display_combobox = ttk.Combobox(self.tab_actions, values=additional_display_options, width=20)
-        self.additional_display_combobox.grid(row=1, column=1, sticky="w", padx=5, pady=5)
-        self.additional_display_combobox.set("None")  # Default value
+        self.additional_display_combobox = ttk.Combobox(self.tab_actions, values=additional_display_options, width=30)
+        self.additional_display_combobox.pack(anchor="w", padx=10, fill="x", pady=(0, 10))
+        self.additional_display_combobox.set("None")
         self.additional_display_combobox.last_value = "None"
         self.additional_display_combobox.bind("<<ComboboxSelected>>", self.on_additional_display_changed)
         
-        ttk.Label(self.tab_actions, text="Plane number:").grid(row=2, column=0, sticky="w", padx=5, pady=5)
-        self.plane_number_spinbox = ttk.Spinbox(self.tab_actions, from_=0, to=100, width=5, command=self.on_plane_number_changed)
-        self.plane_number_spinbox.grid(row=2, column=1, sticky="w", padx=5, pady=5)
+        # Plane number
+        ttk.Label(self.tab_actions, text="Plane number:").pack(anchor="w", padx=10, pady=(10, 2))
+        
+        self.plane_number_spinbox = ttk.Spinbox(self.tab_actions, from_=0, to=100, width=10, command=self.on_plane_number_changed)
+        self.plane_number_spinbox.pack(anchor="w", padx=10, pady=(0, 10))
         self.plane_number_spinbox.last_value = None
         self.plane_number_spinbox.bind("<Return>", lambda e: self.on_plane_number_changed())
         self.plane_number_spinbox.bind("<FocusOut>", lambda e: self.on_plane_number_changed())
-        # ==================== TEST MODE SECTION ====================
-        test_frame = ttk.LabelFrame(self.tab_actions, text="Test Mode", padding=5)
-        test_frame.grid(row=3, column=0, columnspan=2, pady=10, padx=5, sticky="ew")
         
-        ttk.Label(test_frame, text="hologram to test:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+        # ==================== TEST MODE SECTION ====================
+        test_frame = ttk.LabelFrame(self.tab_actions, text="Test Mode", padding=10)
+        test_frame.pack(fill="x", padx=10, pady=(10, 5))
+        
+        ttk.Label(test_frame, text="hologram to test:").pack(anchor="w", pady=(0, 5))
+        
         self.hologram_combobox = ttk.Combobox(test_frame, width=40)
-        self.hologram_combobox.grid(row=0, column=1, sticky="w", padx=5, pady=5)
+        self.hologram_combobox.pack(fill="x", pady=(0, 10))
         self.hologram_combobox.bind("<<ComboboxSelected>>", self.on_hologram_selected)
-        self.enter_test_button = ttk.Button(test_frame, text=format_button_text("ENTER TEST MODE", "enter"), command=self.on_enter_test_mode, bootstyle="success")
-        self.enter_test_button.grid(row=1, column=0, pady=10, padx=5)
-        self.exit_test_button = ttk.Button(test_frame, text=format_button_text("EXIT TEST MODE", "exit"), command=self.on_exit_test_mode, bootstyle="secondary")
-        self.exit_test_button.grid(row=1, column=1, pady=10, padx=5)
+        
+        test_buttons_frame = ttk.Frame(test_frame)
+        test_buttons_frame.pack(fill="x")
+        
+        self.enter_test_button = ttk.Button(test_buttons_frame, text=format_button_text("ENTER TEST MODE", "enter"), command=self.on_enter_test_mode, bootstyle="success")
+        self.enter_test_button.pack(side="left", expand=True, fill="x", padx=(0, 5))
+        
+        self.exit_test_button = ttk.Button(test_buttons_frame, text=format_button_text("EXIT TEST MODE", "exit"), command=self.on_exit_test_mode, bootstyle="secondary")
+        self.exit_test_button.pack(side="left", expand=True, fill="x", padx=(5, 0))
+        
         # ==================== BATCH PROCESSING SECTION ====================
-        batch_frame = ttk.LabelFrame(self.tab_actions, text="Batch Processing", padding=5)
-        batch_frame.grid(row=4, column=0, columnspan=2, pady=10, padx=5, sticky="ew")
+        batch_frame = ttk.LabelFrame(self.tab_actions, text="Batch Processing", padding=10)
+        batch_frame.pack(fill="x", padx=10, pady=5)
         
         # Batch control buttons
         button_frame = ttk.Frame(batch_frame)
-        button_frame.grid(row=0, column=0, columnspan=2, pady=5, sticky="ew")
+        button_frame.pack(fill="x", pady=(0, 5))
         
         self.start_batch_button = ttk.Button(button_frame, text=format_button_text("START BATCH", "start"), command=self.on_start_batch, bootstyle="success")
-        self.start_batch_button.grid(row=0, column=0, padx=5)
+        self.start_batch_button.pack(side="left", expand=True, fill="x", padx=(0, 5))
+        
         self.stop_batch_button = ttk.Button(button_frame, text=format_button_text("STOP BATCH", "stop"), command=self.on_stop_batch, bootstyle="danger")
-        self.stop_batch_button.grid(row=0, column=1, padx=5)
+        self.stop_batch_button.pack(side="left", expand=True, fill="x", padx=(5, 0))
         
         # Display results checkbox
         self.display_batch_results_var = tk.BooleanVar(value=False)
@@ -563,38 +625,31 @@ class HoloTrackerApp:
             text="DISPLAY RESULTS", 
             variable=self.display_batch_results_var
         )
-        self.display_batch_results_check.grid(row=0, column=2, padx=10)
+        self.display_batch_results_check.pack(side="left", padx=(10, 0))
         
         # CSV output info
         self.batch_csv_var = tk.StringVar(value="")
         self.batch_csv_label = ttk.Label(batch_frame, textvariable=self.batch_csv_var, foreground="blue", font=("Arial", 8))
-        self.batch_csv_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=2)
-        
-        # Configure grid weights for proper resizing
-        batch_frame.columnconfigure(1, weight=1)
-        button_frame.columnconfigure(0, weight=1)
-        button_frame.columnconfigure(1, weight=1)
+        self.batch_csv_label.pack(anchor="w", pady=2)
 
         # Execution times display area
         self.timing_frame = ttk.Frame(self.tab_actions)
-        self.timing_frame.grid(row=5, column=0, columnspan=2, pady=10, padx=5, sticky="ew")
+        self.timing_frame.pack(fill="x", padx=10, pady=(10, 5))
         
-        ttk.Label(self.timing_frame, text="Processing time:", font=("Arial", 10, "bold")).grid(row=0, column=0, sticky="w")
+        ttk.Label(self.timing_frame, text="Processing time:", font=("Arial", 10, "bold")).pack(anchor="w")
         self.timing_label = ttk.Label(self.timing_frame, text="No processing performed", font=("Arial", 9), foreground="gray")
-        self.timing_label.grid(row=1, column=0, sticky="w")
+        self.timing_label.pack(anchor="w")
 
         # Bottom buttons frame
         bottom_buttons_frame = ttk.Frame(self.tab_actions)
-        bottom_buttons_frame.grid(row=6, column=0, columnspan=2, pady=10)
-        bottom_buttons_frame.columnconfigure(0, weight=1)
-        bottom_buttons_frame.columnconfigure(1, weight=1)
+        bottom_buttons_frame.pack(fill="x", padx=10, pady=(10, 10))
 
         # Help and Exit buttons
         self.help_button = ttk.Button(bottom_buttons_frame, text=format_button_text("HELP", "help"), bootstyle="info", command=self.show_help)
-        self.help_button.grid(row=0, column=0, padx=(0, 5), sticky="ew")
+        self.help_button.pack(side="left", expand=True, fill="x", padx=(0, 5))
         
         self.exit_button = ttk.Button(bottom_buttons_frame, text=format_button_text("EXIT", "exit"), bootstyle="danger", command=self.on_closing)
-        self.exit_button.grid(row=0, column=1, padx=(5, 0), sticky="ew")
+        self.exit_button.pack(side="left", expand=True, fill="x", padx=(5, 0))
 
     def update_buttons_state(self, state):
         # WAIT: only allow ENTER TEST MODE and START BATCH

@@ -1,0 +1,10 @@
+{
+  "feature_path": "C:/TRAVAIL/RepositoriesGithub/HOLOTRACKER_FULL_PYTHON/Film REF/RESULT_20251022_170015.csv",
+  "memory": 3,
+  "minlength": 10,
+  "x_range": "2E-6",
+  "y_range": "2E-6",
+  "z_range": "2E-6",
+  "history": 50,
+  "step": 1
+}

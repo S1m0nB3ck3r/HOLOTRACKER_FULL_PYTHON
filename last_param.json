@@ -15,7 +15,7 @@
     "sum_size": "11",
     "remove_mean": true,
     "cleaning_type": "division",
-    "batch_threshold": "compute on 1st hologram",
+    "batch_threshold": "compute on each hologram",
     "nb_StdVar_threshold": "15",
     "connectivity": "26",
     "min_voxel": "10",
