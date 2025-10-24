@@ -34,7 +34,7 @@ HoloTracker is a comprehensive software suite for analyzing digital holograms to
 - **Python 3.8 or higher**
 - **Operating System:** Windows, Linux, or macOS
 - **CUDA Toolkit** (for GPU acceleration with CuPy)
-- **Compatible NVIDIA GPU** (recommended for faster processing)
+- **NVIDIA GPU**
 
 ### Required Python Packages
 - numpy
@@ -55,7 +55,7 @@ HoloTracker is a comprehensive software suite for analyzing digital holograms to
 ### 1. Clone or Download the Repository
 
 ```bash
-git clone https://github.com/S1m0nB3ck3r/HOLOTRACKER_FULL_PYTHON.git
+git clone https://github.com/S1m0nB3ck3r/HOLOTRACKER.git
 cd HOLOTRACKER_FULL_PYTHON
 ```
 
@@ -95,7 +95,7 @@ If `requirements.txt` is not present, install packages manually:
 pip install numpy scipy matplotlib pandas opencv-python Pillow scikit-image ttkbootstrap trackpy
 ```
 
-### 4. Install CuPy for GPU Acceleration (Optional but Recommended)
+### 4. Install CuPy for GPU Acceleration
 
 CuPy requires NVIDIA CUDA Toolkit. Install the appropriate version based on your CUDA installation:
 
